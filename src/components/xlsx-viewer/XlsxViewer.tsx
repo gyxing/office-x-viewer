@@ -1,8 +1,9 @@
-import { Empty, Tabs, Typography } from 'antd';
+import { Tabs, Typography } from 'antd';
 import type { CSSProperties } from 'react';
 import { memo, useMemo } from 'react';
 import type { XlsxCell, XlsxCellStyle, XlsxSheet, XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeChartView } from '../office-chart/OfficeChartView';
+import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
 
 type XlsxViewerProps = {
   workbook?: XlsxWorkbook;
@@ -253,7 +254,7 @@ export function XlsxViewer({ workbook, activeSheetId, zoom, onSelectSheet }: Xls
   );
 
   if (!activeSheet) {
-    return <Empty description="请先上传 XLSX 文件开始预览" />;
+    return <OfficeEmpty kind="xlsx" />;
   }
 
   return (
@@ -291,3 +292,4 @@ export function XlsxViewer({ workbook, activeSheetId, zoom, onSelectSheet }: Xls
     </div>
   );
 }
+

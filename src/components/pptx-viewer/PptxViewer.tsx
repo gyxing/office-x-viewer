@@ -1,6 +1,6 @@
-import { Empty } from 'antd';
 import { useEffect, useRef } from 'react';
 import type { PptxDocument } from '../../services/pptx/types';
+import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
 import { PptxThumbnail } from './PptxThumbnail';
 import { PptxSlide } from './PptxSlide';
 
@@ -19,7 +19,7 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
   }, [activeIndex, zoom]);
 
   if (!document?.slides.length) {
-    return <Empty description="请先上传 PPTX 文件开始预览" />;
+    return <OfficeEmpty kind="pptx" />;
   }
 
   const currentSlide = document.slides[activeIndex];
@@ -90,3 +90,4 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
     </div>
   );
 }
+

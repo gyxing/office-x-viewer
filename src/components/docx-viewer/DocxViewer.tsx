@@ -1,4 +1,4 @@
-import { Empty, Typography } from 'antd';
+import { Typography } from 'antd';
 import type { CSSProperties } from 'react';
 import { memo, useMemo } from 'react';
 import type {
@@ -12,6 +12,7 @@ import type {
   DocxTextStyle,
 } from '../../services/docx/types';
 import { OfficeChartView } from '../office-chart/OfficeChartView';
+import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
 
 type DocxViewerProps = {
   document?: DocxDocument;
@@ -126,26 +127,26 @@ function DocxShape({ inline }: { inline: Extract<DocxInline, { type: 'shape' }> 
             }}
           >
             {path ? (
-            <svg
-              viewBox={item.viewBox ?? `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`}
-              preserveAspectRatio="none"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                overflow: 'visible',
-              }}
-            >
-              <path
-                d={path}
-                fill={item.fillColor ?? 'none'}
-                stroke={item.strokeColor ?? 'none'}
-                strokeWidth={item.strokeWidth}
-                strokeDasharray={item.strokeDasharray}
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
+              <svg
+                viewBox={item.viewBox ?? `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`}
+                preserveAspectRatio="none"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  overflow: 'visible',
+                }}
+              >
+                <path
+                  d={path}
+                  fill={item.fillColor ?? 'none'}
+                  stroke={item.strokeColor ?? 'none'}
+                  strokeWidth={item.strokeWidth}
+                  strokeDasharray={item.strokeDasharray}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
             ) : null}
             {item.paragraphs?.map((paragraph) => (
               <Paragraph key={paragraph.id} block={paragraph} compact />
@@ -164,7 +165,7 @@ function ParagraphComponent({ block, compact = false }: { block: DocxParagraphBl
       margin: 0,
       marginTop: compact ? 0 : block.spacingBefore,
       marginRight: block.indentRight,
-      marginBottom: compact ? block.spacingAfter ?? 0 : block.spacingAfter ?? 0,
+      marginBottom: block.spacingAfter ?? 0,
       marginLeft: block.indentLeft,
       paddingLeft: block.paddingLeft,
       paddingRight: block.paddingRight,
@@ -337,7 +338,7 @@ export function DocxViewer({ document, zoom }: DocxViewerProps) {
   );
 
   if (!document?.blocks.length || !page) {
-    return <Empty description="请先上传 DOCX 文件开始预览" />;
+    return <OfficeEmpty kind="docx" />;
   }
 
   return (
@@ -389,3 +390,4 @@ export function DocxViewer({ document, zoom }: DocxViewerProps) {
     </div>
   );
 }
+
