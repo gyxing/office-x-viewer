@@ -29,6 +29,8 @@ export type OfficeChartSeries = {
   type?: OfficeChartType;
   stacking?: 'stacked' | 'percentStacked';
   stackGroup?: string;
+  gapWidth?: number;
+  overlap?: number;
   color?: string;
   pointColors?: string[];
   pointLabels?: string[];
@@ -37,6 +39,7 @@ export type OfficeChartSeries = {
     borderColor?: string;
     borderWidth?: number;
   }>;
+  dataLabels?: OfficeDataLabels;
   smooth?: boolean;
   lineWidth?: number;
   marker?: {
@@ -45,11 +48,25 @@ export type OfficeChartSeries = {
   };
 };
 
+export type OfficeDataLabels = {
+  delete?: boolean;
+  position?: string;
+  separator?: string;
+  showLegendKey?: boolean;
+  showVal?: boolean;
+  showCatName?: boolean;
+  showSerName?: boolean;
+  showPercent?: boolean;
+  showBubbleSize?: boolean;
+  showLeaderLines?: boolean;
+};
+
 export type OfficeChartModel = {
   type: OfficeChartType;
   title?: string;
   categories: string[];
   series: OfficeChartSeries[];
+  dataLabels?: OfficeDataLabels;
   showLegend?: boolean;
   legendPosition?: 'top' | 'bottom' | 'left' | 'right';
   legendStyle?: {
@@ -66,8 +83,17 @@ export type OfficeChartModel = {
   showDataLabels?: boolean;
   holeSize?: number;
   startAngle?: number;
+  ofPieType?: 'bar' | 'pie';
+  ofPieSecondPlotCount?: number;
+  secondPieSize?: number;
+  gapWidth?: number;
+  overlap?: number;
   roseType?: 'radius' | 'area';
   radius?: [string, string];
+  radarStyle?: string;
+  radarRadius?: string;
+  radarStartAngle?: number;
+  radarSplitNumber?: number;
   radarIndicators?: Array<{
     name: string;
     max: number;
@@ -425,11 +451,66 @@ function readLineWidth(node: Element | null | undefined) {
   return width / 9525;
 }
 
+function readPositiveNumber(node: Element | null | undefined) {
+  const value = Number(attr(node, 'val'));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readOfPieSecondPlotCount(chartNode: Element, pointCount: number) {
+  if (pointCount <= 1) return 0;
+  const splitPos = readPositiveNumber(childByLocalName(chartNode, 'splitPos'));
+  const splitType = attr(childByLocalName(chartNode, 'splitType'), 'val');
+  if ((splitType === 'pos' || !splitType) && splitPos) {
+    return Math.max(1, Math.min(pointCount - 1, Math.round(splitPos)));
+  }
+
+  // Some WPS/Office files omit splitType/splitPos after saving. In that case
+  // the extra dPt after the real data points styles the aggregate "Other"
+  // slice, while the last two real points are expanded in the secondary plot.
+  return Math.max(1, Math.min(pointCount - 1, 2));
+}
+
+function isPieLikeChart(type: OfficeChartType, ofPieType?: 'bar' | 'pie') {
+  return type === 'pie' || type === 'doughnut' || Boolean(ofPieType);
+}
+
 function readShowDataLabels(chartNode: Element | null) {
   return descendantsByLocalName(chartNode, 'dLbls').some((labelsNode) => {
     const showVal = childByLocalName(labelsNode, 'showVal');
     return attr(showVal, 'val') === '1' || attr(showVal, 'val') === 'true';
   });
+}
+
+function readDataLabels(labelsNode: Element | null | undefined): OfficeDataLabels | undefined {
+  if (!labelsNode) return undefined;
+  const dataLabels: OfficeDataLabels = {};
+  const readBool = (name: string) => {
+    const value = attr(childByLocalName(labelsNode, name), 'val');
+    if (value === undefined) return undefined;
+    return value === '1' || value === 'true';
+  };
+  const deleted = attr(childByLocalName(labelsNode, 'delete'), 'val');
+  const position = attr(childByLocalName(labelsNode, 'dLblPos'), 'val');
+  const separator = textContent(childByLocalName(labelsNode, 'separator')).trim();
+
+  if (deleted === '1' || deleted === 'true') dataLabels.delete = true;
+  if (position) dataLabels.position = position;
+  if (separator) dataLabels.separator = separator;
+  const showLegendKey = readBool('showLegendKey');
+  const showVal = readBool('showVal');
+  const showCatName = readBool('showCatName');
+  const showSerName = readBool('showSerName');
+  const showPercent = readBool('showPercent');
+  const showBubbleSize = readBool('showBubbleSize');
+  const showLeaderLines = readBool('showLeaderLines');
+  if (showLegendKey !== undefined) dataLabels.showLegendKey = showLegendKey;
+  if (showVal !== undefined) dataLabels.showVal = showVal;
+  if (showCatName !== undefined) dataLabels.showCatName = showCatName;
+  if (showSerName !== undefined) dataLabels.showSerName = showSerName;
+  if (showPercent !== undefined) dataLabels.showPercent = showPercent;
+  if (showBubbleSize !== undefined) dataLabels.showBubbleSize = showBubbleSize;
+  if (showLeaderLines !== undefined) dataLabels.showLeaderLines = showLeaderLines;
+  return Object.keys(dataLabels).length ? dataLabels : undefined;
 }
 
 function readLegendPosition(chartNode: Element | null) {
@@ -530,34 +611,52 @@ function findChartNodes(plotArea: Element | null) {
 
 function readChartPlot(chartNode: Element, theme: OfficeTheme, date1904: boolean) {
   const type = normalizeType(chartNode);
+  const chartKind = localName(chartNode);
   const seriesNodes = childrenByLocalName(chartNode, 'ser');
   const firstSeries = seriesNodes[0];
+  const plotDataLabels = readDataLabels(childrenByLocalName(chartNode, 'dLbls')[0]);
   const grouping = attr(childByLocalName(chartNode, 'grouping'), 'val');
   const stacking: OfficeChartSeries['stacking'] =
     grouping === 'stacked' || grouping === 'percentStacked' ? grouping : undefined;
   const stackGroup = stacking ? `office-chart-${type}` : undefined;
   const categories = readCacheValues(descendantByLocalName(firstSeries, 'cat'), date1904).map(decodeMojibake);
   const firstSliceAngle = Number(attr(childByLocalName(chartNode, 'firstSliceAng'), 'val'));
+  const gapWidth = readPositiveNumber(childByLocalName(chartNode, 'gapWidth'));
+  const overlapValue = Number(attr(childByLocalName(chartNode, 'overlap'), 'val'));
+  const overlap = Number.isFinite(overlapValue) ? overlapValue : undefined;
   const series = seriesNodes.map((seriesNode, index) => ({
     name: firstText(descendantByLocalName(seriesNode, 'tx')) || `Series ${index + 1}`,
     type,
     stacking,
     stackGroup,
+    gapWidth,
+    overlap,
     values: readNumericValues(descendantByLocalName(seriesNode, 'val')),
     color: readSeriesColorWithTheme(seriesNode, theme),
     lineWidth: readLineWidth(childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln')),
     pointColors: readPointColors(seriesNode, theme),
     pointStyles: readPointStyles(seriesNode, theme),
+    dataLabels: readDataLabels(childrenByLocalName(seriesNode, 'dLbls')[0]) ?? plotDataLabels,
     smooth: attr(childByLocalName(seriesNode, 'smooth'), 'val') === '1' || attr(childByLocalName(seriesNode, 'smooth'), 'val') === 'true',
     marker: readSeriesMarker(seriesNode),
   }));
+  const firstValueCount = series[0]?.values.length ?? 0;
+  const ofPieTypeValue = attr(childByLocalName(chartNode, 'ofPieType'), 'val');
+  const ofPieType = chartKind === 'ofpiechart' && (ofPieTypeValue === 'bar' || ofPieTypeValue === 'pie') ? ofPieTypeValue : undefined;
 
   return {
     type,
     categories,
     series,
+    dataLabels: plotDataLabels,
     holeSize: type === 'doughnut' ? Number(attr(childByLocalName(chartNode, 'holeSize'), 'val') ?? 0) || undefined : undefined,
-    startAngle: Number.isFinite(firstSliceAngle) ? firstSliceAngle : undefined,
+    startAngle: isPieLikeChart(type, ofPieType) ? Number.isFinite(firstSliceAngle) ? firstSliceAngle : 0 : undefined,
+    ofPieType,
+    ofPieSecondPlotCount: ofPieType ? readOfPieSecondPlotCount(chartNode, firstValueCount) : undefined,
+    secondPieSize: ofPieType ? readPositiveNumber(childByLocalName(chartNode, 'secondPieSize')) : undefined,
+    gapWidth,
+    overlap,
+    radarStyle: type === 'radar' ? attr(childByLocalName(chartNode, 'radarStyle'), 'val') : undefined,
   };
 }
 
@@ -590,10 +689,17 @@ export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OF
   const categories = primaryPlot?.categories ?? [];
   const series = plots.flatMap((plot) => plot.series);
   const type = primaryPlot?.type ?? 'unknown';
+  const rawTitle = firstText(childByLocalName(chart, 'title'));
+  const autoTitleDeleted = attr(childByLocalName(chart, 'autoTitleDeleted'), 'val');
+  const title =
+    rawTitle ||
+    (childByLocalName(chart, 'title') && autoTitleDeleted !== '1' && autoTitleDeleted !== 'true'
+      ? series[0]?.name
+      : undefined);
 
   return {
     type,
-    title: firstText(childByLocalName(chart, 'title')) || undefined,
+    title: title || undefined,
     categories,
     series,
     showLegend: readLegendVisible(childByLocalName(chart, 'legend')),
@@ -603,6 +709,12 @@ export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OF
     radarIndicators: type === 'radar' ? buildRadarIndicators(categories, series) : undefined,
     holeSize: primaryPlot?.holeSize,
     startAngle: primaryPlot?.startAngle,
+    ofPieType: primaryPlot?.ofPieType,
+    ofPieSecondPlotCount: primaryPlot?.ofPieSecondPlotCount,
+    secondPieSize: primaryPlot?.secondPieSize,
+    gapWidth: primaryPlot?.gapWidth,
+    overlap: primaryPlot?.overlap,
+    radarStyle: primaryPlot?.radarStyle,
   };
 }
 
@@ -697,6 +809,343 @@ function buildChartGrid(chart: OfficeChartModel) {
   };
 }
 
+function buildOfficeTitle(chart: OfficeChartModel) {
+  return chart.title
+    ? {
+        text: chart.title,
+        left: 'center',
+        top: 8,
+        textStyle: {
+          fontSize: 14,
+          fontWeight: 600,
+          color: '#111827',
+          fontFamily: OFFICE_FONT_FAMILY,
+        },
+      }
+    : undefined;
+}
+
+function resolveOfficePieStartAngle(chart: OfficeChartModel) {
+  const officeAngle = chart.startAngle ?? 0;
+  return ((90 - officeAngle) % 360 + 360) % 360;
+}
+
+function resolveOfficeRadarStartAngle(chart: OfficeChartModel) {
+  return chart.radarStartAngle ?? 90;
+}
+
+function resolveOfficeRadarRadius(chart: OfficeChartModel) {
+  return chart.radarRadius ?? (chart.legendPosition === 'bottom' ? '62%' : '68%');
+}
+
+function reorderRadarAxes<T>(items: T[]) {
+  if (items.length <= 2) return items.slice();
+  return [items[0], ...items.slice(1).reverse()];
+}
+
+function resolveOfficeRadarCenter(chart: OfficeChartModel): [string, string] {
+  if (chart.legendPosition === 'bottom') return ['50%', chart.title ? '52%' : '48%'];
+  if (chart.legendPosition === 'top') return ['50%', chart.title ? '58%' : '56%'];
+  return ['50%', chart.title ? '56%' : '52%'];
+}
+
+function resolveBarWidthFromGap(gapWidth: number | undefined, seriesCount: number, overlap?: number) {
+  if (!Number.isFinite(gapWidth) || gapWidth === undefined) return undefined;
+  const visibleSeriesCount = Math.max(1, seriesCount);
+  const overlapRatio = Math.max(-1, Math.min(1, (overlap ?? 0) / 100));
+  const effectiveSeriesCount = Math.max(1, visibleSeriesCount - Math.max(0, overlapRatio) * (visibleSeriesCount - 1));
+  const categoryWidth = 72;
+  const width = categoryWidth / (effectiveSeriesCount + gapWidth / 100);
+  return Math.max(6, Math.min(46, Math.round(width)));
+}
+
+function readPieLabelPosition(labels?: OfficeDataLabels, fallback: 'outside' | 'inside' = 'outside') {
+  const position = labels?.position?.toLowerCase();
+  if (!position) return fallback;
+  if (position.includes('in')) return 'inside';
+  if (position.includes('out')) return 'outside';
+  return fallback;
+}
+
+function readCartesianLabelPosition(labels?: OfficeDataLabels, horizontal = false) {
+  const position = labels?.position?.toLowerCase();
+  if (!position) return horizontal ? 'right' : 'top';
+  if (position === 'ctr' || position === 'center') return 'inside';
+  if (position === 'inbase') return horizontal ? 'insideLeft' : 'insideBottom';
+  if (position === 'inend') return horizontal ? 'insideRight' : 'insideTop';
+  if (position === 'outend') return horizontal ? 'right' : 'top';
+  if (position.includes('base')) return horizontal ? 'left' : 'bottom';
+  if (position.includes('end')) return horizontal ? 'right' : 'top';
+  return horizontal ? 'right' : 'top';
+}
+
+function buildDataLabelFormatter(labels: OfficeDataLabels | undefined, categories: string[]) {
+  const showValue = labels?.showVal ?? false;
+  const showCategory = labels?.showCatName ?? false;
+  const showSeries = labels?.showSerName ?? false;
+  const showPercent = labels?.showPercent ?? false;
+  const separator = labels?.separator ?? '\n';
+  return (params: unknown) => {
+    const item = params as { name?: string; value?: unknown; dataIndex?: number; percent?: number; seriesName?: string };
+    const value = Array.isArray(item.value) ? item.value[item.value.length - 1] : item.value;
+    const category = item.name ?? (item.dataIndex !== undefined ? categories[item.dataIndex] : undefined);
+    const parts: string[] = [];
+    if (showSeries && item.seriesName) parts.push(item.seriesName);
+    if (showCategory && category) parts.push(category);
+    if (showValue && value !== undefined) parts.push(String(value));
+    if (showPercent && item.percent !== undefined) parts.push(`${item.percent}%`);
+    return parts.join(separator).trim();
+  };
+}
+
+function shouldShowDataLabels(labels: OfficeDataLabels | undefined, chartShowDataLabels?: boolean) {
+  if (labels?.delete) return false;
+  if (!labels) return Boolean(chartShowDataLabels);
+  const explicitFlags = [labels.showVal, labels.showCatName, labels.showSerName, labels.showPercent].filter(
+    (value) => value !== undefined,
+  );
+  if (explicitFlags.length) return explicitFlags.some(Boolean);
+  return Boolean(chartShowDataLabels);
+}
+
+function buildCartesianDataLabelConfig(
+  labels: OfficeDataLabels | undefined,
+  chartShowDataLabels: boolean | undefined,
+  categories: string[],
+  horizontal = false,
+) {
+  const effectiveLabels = labels ?? (chartShowDataLabels ? { showVal: true } : undefined);
+  return {
+    show: shouldShowDataLabels(effectiveLabels, chartShowDataLabels),
+    position: readCartesianLabelPosition(effectiveLabels, horizontal),
+    formatter: buildDataLabelFormatter(effectiveLabels, categories),
+    color: '#334155',
+    fontFamily: OFFICE_FONT_FAMILY,
+  };
+}
+
+function buildPieDataLabelConfig(labels: OfficeDataLabels | undefined, showDataLabels?: boolean) {
+  const position = readPieLabelPosition(labels, 'outside');
+  const showValue = labels?.showVal ?? showDataLabels;
+  const showCategory = labels?.showCatName ?? false;
+  const showSeries = labels?.showSerName ?? false;
+  const showPercent = labels?.showPercent ?? false;
+  const separator = labels?.separator ?? '\n';
+  const formatter = (params: unknown) => {
+    const item = params as { name?: string; data?: { name?: string }; value?: number; percent?: number; seriesName?: string };
+    const parts: string[] = [];
+    if (showSeries && item.seriesName) parts.push(item.seriesName);
+    if (showCategory && (item.data?.name ?? item.name)) parts.push(item.data?.name ?? item.name ?? '');
+    if (showValue && item.value !== undefined) parts.push(String(item.value));
+    if (showPercent && item.percent !== undefined) parts.push(`${item.percent}%`);
+    return parts.join(separator).trim();
+  };
+
+  return {
+    show: !labels?.delete && Boolean(showValue || showCategory || showSeries || showPercent || showDataLabels),
+    position,
+    formatter,
+  };
+}
+
+function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], palette: string[]): EChartsOption {
+  const sourceSeries = chart.series[0];
+  const pieLabels = chart.dataLabels ?? sourceSeries?.dataLabels;
+  const values = sourceSeries?.values ?? [];
+  const secondCount = Math.max(1, Math.min(values.length - 1, chart.ofPieSecondPlotCount ?? Math.ceil(values.length / 3)));
+  const splitIndex = Math.max(1, values.length - secondCount);
+  const mainNames = categories.slice(0, splitIndex);
+  const secondaryNames = categories.slice(splitIndex, values.length);
+  const secondaryValues = values.slice(splitIndex);
+  const secondaryTotal = secondaryValues.reduce((sum, value) => sum + value, 0);
+  const otherName = '其他';
+  const otherStyle = buildPieItemStyle(sourceSeries, categories.length, palette);
+  const startAngle = resolveOfficePieStartAngle(chart);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const beforeOtherTotal = values.slice(0, splitIndex).reduce((sum, value) => sum + value, 0);
+  const otherStart = total ? startAngle - (beforeOtherTotal / total) * 360 : startAngle;
+  const otherEnd = total ? otherStart - (secondaryTotal / total) * 360 : startAngle;
+  const otherMid = ((otherStart + otherEnd) / 2) * (Math.PI / 180);
+  const connectorAnchorX = 34 + Math.cos(otherMid) * 23;
+  const connectorAnchorY = (chart.title ? 58 : 52) - Math.sin(otherMid) * 23;
+  const mainData = [
+    ...mainNames.map((name, index) => ({
+      name,
+      value: values[index] ?? 0,
+      itemStyle: buildPieItemStyle(sourceSeries, index, palette),
+    })),
+    {
+      name: otherName,
+      value: secondaryTotal,
+      itemStyle: otherStyle,
+      tooltip: {
+        formatter: `${otherName}<br/>${sourceSeries?.name ?? ''}: ${secondaryTotal}`,
+      },
+    },
+  ];
+  const secondarySize = Math.max(28, Math.min(70, Math.round(52 * ((chart.secondPieSize ?? 75) / 75))));
+  const legend = buildLegend(chart, categories.length) as Record<string, unknown> | undefined;
+  const tooltip = {
+    trigger: 'item' as const,
+    confine: true,
+    appendToBody: true,
+    backgroundColor: 'rgba(15, 23, 42, 0.96)',
+    borderColor: 'rgba(15, 23, 42, 0.96)',
+    textStyle: {
+      color: '#fff',
+      fontFamily: OFFICE_FONT_FAMILY,
+    },
+    formatter: (params: unknown) => {
+      const item = params as { componentSubType?: string; data?: { name?: string }; name?: string; seriesName?: string; value?: unknown };
+      const value = typeof item.value === 'number' ? item.value : Array.isArray(item.value) ? item.value[0] : '';
+      const name = item.componentSubType === 'bar' ? item.seriesName : item.data?.name ?? item.name ?? '';
+      return `${name}<br/>${sourceSeries?.name ?? ''}: ${value}`;
+    },
+  };
+
+  const secondarySeries =
+    chart.ofPieType === 'pie'
+      ? [
+          {
+            type: 'pie' as const,
+            radius: ['0%', `${secondarySize}%`] as [string, string],
+            center: ['72%', chart.title ? '58%' : '52%'] as [string, string],
+            startAngle,
+            avoidLabelOverlap: true,
+            label: buildPieDataLabelConfig(pieLabels, chart.showDataLabels),
+            labelLayout: {
+              hideOverlap: true,
+            },
+            labelLine: {
+              length: 12,
+              length2: 8,
+              smooth: true,
+            },
+            data: secondaryNames.map((name, index) => ({
+              name,
+              value: secondaryValues[index] ?? 0,
+              itemStyle: buildPieItemStyle(sourceSeries, splitIndex + index, palette),
+            })),
+          },
+        ]
+      : secondaryNames.map((name, index) => ({
+          name,
+          type: 'bar' as const,
+          stack: 'office-of-pie-secondary',
+          barWidth: Math.max(26, Math.min(46, Math.round(secondarySize * 0.72))),
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: [
+            {
+              value: secondaryValues[index] ?? 0,
+              itemStyle: buildPieItemStyle(sourceSeries, splitIndex + index, palette),
+            },
+          ],
+          label: {
+            show: chart.showDataLabels,
+            position: 'inside' as const,
+            color: '#334155',
+            fontFamily: OFFICE_FONT_FAMILY,
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 6,
+              shadowColor: 'rgba(15, 23, 42, 0.18)',
+            },
+          },
+        }));
+
+  return {
+    animation: false,
+    backgroundColor: '#fff',
+    color: palette,
+    textStyle: OFFICE_TEXT_STYLE,
+    title: buildOfficeTitle(chart),
+    tooltip,
+    legend: legend
+      ? {
+          ...legend,
+          data: categories,
+        }
+      : undefined,
+    grid:
+      chart.ofPieType === 'bar'
+        ? {
+            left: '64%',
+            top: chart.title ? '34%' : '26%',
+            width: '16%',
+            height: chart.title ? '46%' : '52%',
+            containLabel: false,
+          }
+        : undefined,
+    xAxis:
+      chart.ofPieType === 'bar'
+        ? {
+            type: 'category' as const,
+            data: [''],
+            show: false,
+          }
+        : undefined,
+    yAxis:
+      chart.ofPieType === 'bar'
+        ? {
+            type: 'value' as const,
+            min: 0,
+            max: secondaryTotal || undefined,
+            show: false,
+          }
+        : undefined,
+    graphic:
+      chart.ofPieType === 'bar'
+        ? [
+            {
+              type: 'line',
+              left: `${connectorAnchorX}%`,
+              top: `${connectorAnchorY}%`,
+              shape: { x1: 0, y1: 0, x2: 132, y2: chart.title ? -28 : -24 },
+              style: { stroke: '#cbd5e1', lineWidth: 1 },
+              silent: true,
+            },
+            {
+              type: 'line',
+              left: `${connectorAnchorX}%`,
+              top: `${connectorAnchorY}%`,
+              shape: { x1: 0, y1: 0, x2: 132, y2: chart.title ? 44 : 40 },
+              style: { stroke: '#cbd5e1', lineWidth: 1 },
+              silent: true,
+            },
+          ]
+        : undefined,
+    series: [
+      {
+        type: 'pie' as const,
+        radius: ['0%', '46%'] as [string, string],
+        center: ['34%', chart.title ? '58%' : '52%'] as [string, string],
+        startAngle,
+        avoidLabelOverlap: true,
+        label: buildPieDataLabelConfig(pieLabels, chart.showDataLabels),
+        labelLayout: {
+          hideOverlap: true,
+        },
+        labelLine: {
+          length: 12,
+          length2: 8,
+          smooth: true,
+        },
+        emphasis: {
+          scale: false,
+          itemStyle: {
+            shadowBlur: 8,
+            shadowColor: 'rgba(15, 23, 42, 0.18)',
+          },
+        },
+        data: mainData,
+      },
+      ...secondarySeries,
+    ],
+  };
+}
+
 export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   const categories = resolveCategories(chart);
   const normalizedSeriesTypes = chart.series.map((item) => normalizeSeriesType(item.type ?? chart.type));
@@ -727,6 +1176,8 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   }
 
   const radarIndicators = chart.radarIndicators ?? (isRadar ? buildRadarIndicators(categories, chart.series) : undefined);
+  const radarDisplayIndicators = isRadar && radarIndicators?.length ? reorderRadarAxes(radarIndicators) : undefined;
+  const radarCategories = radarDisplayIndicators?.map((indicator) => indicator.name) ?? categories;
 
   if (chart.type === 'map') {
     const sourceSeries = chart.series[0];
@@ -856,7 +1307,7 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
     };
   }
 
-  if (isRadar && radarIndicators?.length) {
+  if (isRadar && radarDisplayIndicators?.length) {
     return {
       animation: false,
       backgroundColor: '#fff',
@@ -888,8 +1339,11 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       },
       legend: buildLegend(chart),
       radar: {
-        indicator: radarIndicators,
-        splitNumber: 4,
+        center: resolveOfficeRadarCenter(chart),
+        radius: resolveOfficeRadarRadius(chart),
+        startAngle: resolveOfficeRadarStartAngle(chart),
+        indicator: radarDisplayIndicators,
+        splitNumber: chart.radarSplitNumber ?? 5,
         axisName: {
           color: '#475569',
           fontFamily: OFFICE_FONT_FAMILY,
@@ -915,9 +1369,10 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
         return {
           name: item.name,
           type: 'radar',
+          areaStyle: chart.radarStyle === 'filled' ? { opacity: 0.18 } : undefined,
           data: [
             {
-              value: item.values.slice(0, radarIndicators.length),
+              value: reorderRadarAxes(item.values.slice(0, radarDisplayIndicators.length)),
               name: item.name,
             },
           ],
@@ -931,7 +1386,8 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
             color,
           },
           label: {
-            show: chart.showDataLabels,
+            show: shouldShowDataLabels(item.dataLabels ?? chart.dataLabels, chart.showDataLabels),
+            formatter: buildDataLabelFormatter(item.dataLabels ?? chart.dataLabels, radarCategories),
             color: '#334155',
             fontFamily: OFFICE_FONT_FAMILY,
           },
@@ -940,8 +1396,13 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
     };
   }
 
+  if (isPie && chart.ofPieType && categories.length > 1) {
+    return buildOfPieChartOption(chart, categories, palette);
+  }
+
   if (isPie && !usesMixedSeriesTypes) {
     const sourceSeries = chart.series[0];
+    const pieLabels = chart.dataLabels ?? sourceSeries?.dataLabels;
     const data = categories.map((name, index) => ({
       name,
       value: sourceSeries?.values[index] ?? 0,
@@ -989,15 +1450,11 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
           type: 'pie' as const,
           radius,
           roseType: chart.roseType,
-          startAngle: chart.startAngle ?? 90,
+          startAngle: resolveOfficePieStartAngle(chart),
           padAngle: 0,
           center: ['50%', chart.roseType ? '50%' : chart.title ? '58%' : '50%'],
           avoidLabelOverlap: true,
-          label: {
-            show: chart.showDataLabels,
-            color: '#334155',
-            fontFamily: OFFICE_FONT_FAMILY,
-          },
+          label: buildPieDataLabelConfig(pieLabels, chart.showDataLabels),
           labelLayout: {
             hideOverlap: true,
           },
@@ -1028,6 +1485,9 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
     const markerSymbol = item.marker?.symbol && item.marker.symbol !== 'none' ? item.marker.symbol : undefined;
     const hideSymbol = item.marker?.symbol === 'none';
     const isBubbleSeries = item.type === 'bubble';
+    const barSeriesCount = chart.series.filter((seriesItem) => normalizeSeriesType(seriesItem.type ?? chart.type) === 'bar' && !seriesItem.stackGroup).length;
+    const barWidth = isBarSeries ? resolveBarWidthFromGap(item.gapWidth ?? chart.gapWidth, barSeriesCount, item.overlap ?? chart.overlap) : undefined;
+    const labelConfig = buildCartesianDataLabelConfig(item.dataLabels ?? chart.dataLabels, chart.showDataLabels, categories, isHorizontalBar);
 
     return {
       name: item.name,
@@ -1064,12 +1524,11 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       showSymbol: hideSymbol ? false : markerSymbol ? true : isLineSeries || item.type === 'area' || isBubbleSeries || seriesType === 'scatter',
       symbol: markerSymbol,
       symbolSize: item.marker?.size ?? (isBubbleSeries ? 14 : 8),
-      label: {
-        show: chart.showDataLabels,
-        color: '#334155',
-        fontFamily: OFFICE_FONT_FAMILY,
-      },
-      barMaxWidth: isBarSeries ? 32 : undefined,
+      label: labelConfig,
+      barWidth,
+      barGap: isBarSeries && item.overlap !== undefined ? `${-item.overlap}%` : undefined,
+      barCategoryGap: isBarSeries && item.gapWidth !== undefined ? `${item.gapWidth}%` : undefined,
+      barMaxWidth: isBarSeries && !barWidth ? 32 : undefined,
     };
   }) as EChartsOption['series'];
 

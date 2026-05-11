@@ -1428,6 +1428,32 @@ function parseWpsWebExtensionChart(
     ? normalizeLegendPosition((chartStyle.legend as { position?: unknown }).position)
     : undefined;
   const legendStyle = readWpsLegendStyle(chartStyle?.legend);
+  const labelStyle = chartStyle?.label && typeof chartStyle.label === 'object' ? (chartStyle.label as Record<string, unknown>) : undefined;
+  const textLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.textLabel && typeof chartStyle.label.textLabel === 'object'
+    ? (chartStyle.label.textLabel as Record<string, unknown>)
+    : undefined;
+  const numberLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.numberLabel && typeof chartStyle.label.numberLabel === 'object'
+    ? (chartStyle.label.numberLabel as Record<string, unknown>)
+    : undefined;
+  const labelPosition = typeof labelStyle?.position === 'string'
+    ? labelStyle.position
+    : typeof textLabelStyle?.position === 'string'
+      ? textLabelStyle.position
+      : typeof numberLabelStyle?.position === 'string'
+        ? numberLabelStyle.position
+        : undefined;
+  const labelSeparator = typeof labelStyle?.separator === 'string'
+    ? labelStyle.separator
+    : typeof textLabelStyle?.separator === 'string'
+      ? textLabelStyle.separator
+      : typeof numberLabelStyle?.separator === 'string'
+        ? numberLabelStyle.separator
+        : undefined;
+  const labelShowVal = Boolean(labelStyle?.show ?? numberLabelStyle?.show);
+  const labelShowCatName = Boolean(labelStyle?.showCategoryName ?? textLabelStyle?.show ?? numberLabelStyle?.showCatName);
+  const labelShowSerName = Boolean(labelStyle?.showSeriesName ?? textLabelStyle?.showSerName ?? numberLabelStyle?.showSerName);
+  const labelShowPercent = Boolean(labelStyle?.showPercent ?? numberLabelStyle?.showPercent);
+  const labelShowLeaderLines = Boolean(labelStyle?.showLeaderLines ?? numberLabelStyle?.showLeaderLines);
   const showDataLabels = Boolean(
     (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { show?: unknown }).show) ||
       (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { numberLabel?: { show?: unknown }; textLabel?: { show?: unknown } }).numberLabel?.show) ||
@@ -1514,6 +1540,15 @@ function parseWpsWebExtensionChart(
         legendPosition,
         legendStyle,
         showDataLabels,
+        dataLabels: {
+          position: labelPosition,
+          separator: labelSeparator,
+          showVal: labelShowVal,
+          showCatName: labelShowCatName,
+          showSerName: labelShowSerName,
+          showPercent: labelShowPercent,
+          showLeaderLines: labelShowLeaderLines,
+        },
         holeSize:
           chartType === 'doughnut'
             ? (() => {
@@ -1523,7 +1558,12 @@ function parseWpsWebExtensionChart(
             : undefined,
         radius: roseType ? radius : undefined,
         roseType,
-        startAngle: Number.isFinite(Number(style?.startAngle)) ? Number(style?.startAngle) : undefined,
+        startAngle:
+          isPieChart && Number.isFinite(Number(style?.startAngle))
+            ? Number(style?.startAngle)
+            : isPieChart
+              ? 0
+              : undefined,
         snapshotSrc,
       },
       chartId: relId,
