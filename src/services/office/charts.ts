@@ -20,6 +20,7 @@ export type OfficeChartType =
   | 'scatter'
   | 'bubble'
   | 'radar'
+  | 'map'
   | 'unknown';
 
 export type OfficeChartSeries = {
@@ -30,6 +31,7 @@ export type OfficeChartSeries = {
   stackGroup?: string;
   color?: string;
   pointColors?: string[];
+  pointLabels?: string[];
   pointStyles?: Array<{
     color?: OfficeChartColor;
     borderColor?: string;
@@ -50,13 +52,31 @@ export type OfficeChartModel = {
   series: OfficeChartSeries[];
   showLegend?: boolean;
   legendPosition?: 'top' | 'bottom' | 'left' | 'right';
+  legendStyle?: {
+    itemWidth?: number;
+    itemHeight?: number;
+    textStyle?: {
+      color?: string;
+      fontFamily?: string;
+      fontSize?: number;
+      fontStyle?: string;
+      fontWeight?: string | number;
+    };
+  };
   showDataLabels?: boolean;
   holeSize?: number;
   startAngle?: number;
+  roseType?: 'radius' | 'area';
+  radius?: [string, string];
   radarIndicators?: Array<{
     name: string;
     max: number;
   }>;
+  mapSeriesName?: string;
+  mapRegion?: string;
+  mapName?: string;
+  mapGeoJsonUrl?: string;
+  snapshotSrc?: string;
 };
 
 const DEFAULT_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452'];
@@ -182,11 +202,12 @@ function readPointStyles(seriesNode: Element, theme: OfficeTheme) {
     const color = readFillValue(fillNode, theme);
     const borderColor = readFillColor(lineNode, theme);
     const borderWidth = readLineWidth(lineNode);
-    if (color || borderColor || borderWidth !== undefined) {
+    const hasVisibleBorder = Boolean(lineNode && !childByLocalName(lineNode, 'noFill') && (borderColor || borderWidth !== undefined));
+    if (color || hasVisibleBorder) {
       styles[index] = {
         color,
         borderColor,
-        borderWidth: borderWidth ?? (borderColor ? 1 : undefined),
+        borderWidth: borderWidth ?? (hasVisibleBorder ? 1 : undefined),
       };
     }
   });
@@ -419,6 +440,38 @@ function readLegendPosition(chartNode: Element | null) {
   return 'top';
 }
 
+function readFontFamily(node: Element | null | undefined) {
+  const latin = attr(childByLocalName(node, 'latin'), 'typeface');
+  const eastAsia = attr(childByLocalName(node, 'ea'), 'typeface');
+  const complex = attr(childByLocalName(node, 'cs'), 'typeface');
+  const value = [eastAsia, latin, complex].filter((item) => item && !item.startsWith('+')).join(', ');
+  return value || undefined;
+}
+
+function readLegendVisible(chartNode: Element | null) {
+  if (!chartNode) return false;
+  const deleted = attr(childByLocalName(chartNode, 'delete'), 'val');
+  return deleted !== '1' && deleted !== 'true';
+}
+
+function readLegendStyle(chartNode: Element | null, theme: OfficeTheme): OfficeChartModel['legendStyle'] | undefined {
+  const runProps = descendantByLocalName(chartNode, 'defRPr');
+  const fontSize = Number(attr(runProps, 'sz'));
+  const color = readFillColor(runProps, theme);
+  const fontFamily = readFontFamily(runProps);
+  const bold = attr(runProps, 'b');
+  const italic = attr(runProps, 'i');
+  const textStyle = {
+    color,
+    fontFamily,
+    fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize / 100 : undefined,
+    fontWeight: bold === '1' || bold === 'true' ? 600 : undefined,
+    fontStyle: italic === '1' || italic === 'true' ? 'italic' : undefined,
+  };
+  const normalizedTextStyle = Object.fromEntries(Object.entries(textStyle).filter(([, value]) => value !== undefined));
+  return Object.keys(normalizedTextStyle).length ? { textStyle: normalizedTextStyle } : undefined;
+}
+
 function readSeriesMarker(seriesNode: Element) {
   const markerNode = childByLocalName(seriesNode, 'marker');
   const symbol = attr(childByLocalName(markerNode, 'symbol'), 'val');
@@ -480,7 +533,8 @@ function readChartPlot(chartNode: Element, theme: OfficeTheme, date1904: boolean
   const seriesNodes = childrenByLocalName(chartNode, 'ser');
   const firstSeries = seriesNodes[0];
   const grouping = attr(childByLocalName(chartNode, 'grouping'), 'val');
-  const stacking = grouping === 'stacked' || grouping === 'percentStacked' ? grouping : undefined;
+  const stacking: OfficeChartSeries['stacking'] =
+    grouping === 'stacked' || grouping === 'percentStacked' ? grouping : undefined;
   const stackGroup = stacking ? `office-chart-${type}` : undefined;
   const categories = readCacheValues(descendantByLocalName(firstSeries, 'cat'), date1904).map(decodeMojibake);
   const firstSliceAngle = Number(attr(childByLocalName(chartNode, 'firstSliceAng'), 'val'));
@@ -542,8 +596,9 @@ export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OF
     title: firstText(childByLocalName(chart, 'title')) || undefined,
     categories,
     series,
-    showLegend: Boolean(childByLocalName(chart, 'legend')),
+    showLegend: readLegendVisible(childByLocalName(chart, 'legend')),
     legendPosition: readLegendPosition(childByLocalName(chart, 'legend')),
+    legendStyle: readLegendStyle(childByLocalName(chart, 'legend'), theme),
     showDataLabels: readShowDataLabels(plotArea),
     radarIndicators: type === 'radar' ? buildRadarIndicators(categories, series) : undefined,
     holeSize: primaryPlot?.holeSize,
@@ -573,14 +628,33 @@ function normalizeSeriesType(type: OfficeChartType) {
   return 'line';
 }
 
+function sanitizeMapRegionName(name: string) {
+  return name
+    .replace(/特别行政区$|壮族自治区$|回族自治区$|维吾尔自治区$|自治区$|省$|市$/g, '')
+    .trim();
+}
+
+function scaleRoseRadius(radius: [string, string] | undefined): [string, string] | undefined {
+  if (!radius) return undefined;
+  const inner = Number(radius[0].replace(/%$/, ''));
+  const outer = Number(radius[1].replace(/%$/, ''));
+  if (!Number.isFinite(inner) || !Number.isFinite(outer) || outer <= 0) return radius;
+  const fittedOuter = Math.min(58, outer);
+  const fittedInner = Math.max(0, Math.min(fittedOuter - 4, Math.round((inner / outer) * fittedOuter)));
+  return [`${fittedInner}%`, `${fittedOuter}%`];
+}
+
 function buildLegend(chart: OfficeChartModel, itemCount = chart.series.length) {
-  if (chart.showLegend === false || itemCount <= 1) return undefined;
+  if (chart.showLegend === false || itemCount <= 0) return undefined;
 
   const base = {
     type: 'scroll' as const,
-    itemWidth: 10,
-    itemHeight: 10,
-    textStyle: OFFICE_TEXT_STYLE,
+    itemWidth: chart.legendStyle?.itemWidth ?? 10,
+    itemHeight: chart.legendStyle?.itemHeight ?? 10,
+    textStyle: {
+      ...OFFICE_TEXT_STYLE,
+      ...chart.legendStyle?.textStyle,
+    },
   };
 
   switch (chart.legendPosition) {
@@ -653,6 +727,134 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   }
 
   const radarIndicators = chart.radarIndicators ?? (isRadar ? buildRadarIndicators(categories, chart.series) : undefined);
+
+  if (chart.type === 'map') {
+    const sourceSeries = chart.series[0];
+    const values = sourceSeries?.values ?? [];
+    const tierNames = Array.from(new Set((sourceSeries?.pointLabels ?? []).filter(Boolean)));
+    const tierColors = tierNames
+      .map((tier) => {
+        const index = sourceSeries?.pointLabels?.indexOf(tier) ?? -1;
+        return index >= 0 ? sourceSeries?.pointColors?.[index] : undefined;
+      })
+      .filter((color): color is string => Boolean(color));
+    const data = categories.map((name, index) => ({
+      name,
+      value: values[index] ?? 0,
+      labelName: sanitizeMapRegionName(name),
+      tierName: sourceSeries?.pointLabels?.[index],
+      itemStyle: {
+        areaColor: sourceSeries?.pointColors?.[index] ?? '#e5edf8',
+        borderColor: '#ffffff',
+        borderWidth: 1,
+      },
+    }));
+
+    return {
+      animation: false,
+      backgroundColor: '#ffffff',
+      textStyle: OFFICE_TEXT_STYLE,
+      title: chart.title
+        ? {
+            text: chart.title,
+            subtext: chart.mapRegion,
+            left: 'center',
+            top: 8,
+            textStyle: {
+              fontSize: 14,
+              fontWeight: 600,
+              color: '#111827',
+              fontFamily: OFFICE_FONT_FAMILY,
+            },
+            subtextStyle: {
+              color: '#64748b',
+              fontFamily: OFFICE_FONT_FAMILY,
+            },
+          }
+        : undefined,
+      tooltip: {
+        trigger: 'item',
+        confine: true,
+        appendToBody: true,
+        backgroundColor: 'rgba(15, 23, 42, 0.96)',
+        borderColor: 'rgba(15, 23, 42, 0.96)',
+        textStyle: {
+          color: '#fff',
+          fontFamily: OFFICE_FONT_FAMILY,
+        },
+        formatter: (params: unknown) => {
+          const item = params as { data?: { tierName?: string }; name?: string; value?: unknown };
+          const value = typeof item.value === 'number' ? item.value : '';
+          const tier = item.data?.tierName ? `<br/>${item.data.tierName}` : '';
+          return `${item.name ?? ''}<br/>${sourceSeries?.name ?? chart.mapSeriesName ?? ''}: ${value}${tier}`;
+        },
+      },
+      graphic: tierNames.length
+        ? {
+            type: 'group',
+            left: 12,
+            bottom: 12,
+            children: tierNames.flatMap((name, index) => [
+              {
+                type: 'rect',
+                shape: { x: 0, y: index * 20, width: 10, height: 10 },
+                style: { fill: tierColors[index] ?? '#cbd5e1' },
+              },
+              {
+                type: 'text',
+                left: 16,
+                top: index * 20 - 2,
+                style: {
+                  text: name,
+                  fill: '#334155',
+                  font: `12px ${OFFICE_FONT_FAMILY}`,
+                },
+              },
+            ]),
+          }
+        : undefined,
+      series: [
+        {
+          name: sourceSeries?.name ?? chart.mapSeriesName,
+          type: 'map' as const,
+          map: chart.mapName ?? 'china',
+          roam: true,
+          selectedMode: false,
+          layoutCenter: ['50%', chart.title ? '56%' : '52%'],
+          layoutSize: tierNames.length ? '88%' : '92%',
+          zoom: 1.08,
+          itemStyle: {
+            areaColor: '#eef3f8',
+            borderColor: '#f8fafc',
+            borderWidth: 1,
+          },
+          emphasis: {
+            label: {
+              show: true,
+              color: '#0f172a',
+              fontFamily: OFFICE_FONT_FAMILY,
+            },
+            itemStyle: {
+              areaColor: '#f59e0b',
+              borderColor: '#ffffff',
+              borderWidth: 1.2,
+            },
+          },
+          label: {
+            show: chart.showDataLabels ?? true,
+            color: '#1f2937',
+            fontFamily: OFFICE_FONT_FAMILY,
+            fontSize: 9,
+            formatter: (params: unknown) => {
+              const item = params as { data?: { labelName?: string }; name?: string };
+              return item.data?.labelName ?? sanitizeMapRegionName(item.name ?? '');
+            },
+          },
+          data,
+        },
+      ],
+    };
+  }
 
   if (isRadar && radarIndicators?.length) {
     return {
@@ -748,6 +950,9 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
     const innerRadius = chart.type === 'doughnut' && chart.holeSize
       ? `${Math.max(8, Math.min(90, Math.round(68 * (chart.holeSize / 100))))}%`
       : '0%';
+    const radius: [string, string] = chart.roseType
+      ? scaleRoseRadius(chart.radius) ?? [innerRadius, '58%']
+      : chart.radius ?? [innerRadius, '68%'];
 
     return {
       animation: false,
@@ -781,15 +986,12 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       legend: buildLegend(chart, categories.length),
       series: [
         {
-          type: 'pie',
-          radius: [innerRadius, '68%'],
+          type: 'pie' as const,
+          radius,
+          roseType: chart.roseType,
           startAngle: chart.startAngle ?? 90,
           padAngle: 0,
-          center: ['50%', chart.title ? '58%' : '50%'],
-          itemStyle: {
-            borderColor: 'transparent',
-            borderWidth: 0,
-          },
+          center: ['50%', chart.roseType ? '50%' : chart.title ? '58%' : '50%'],
           avoidLabelOverlap: true,
           label: {
             show: chart.showDataLabels,
@@ -819,7 +1021,7 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   }
 
   const series = chart.series.map((item, index) => {
-    const seriesType = normalizeSeriesType(item.type ?? chart.type);
+    const seriesType = normalizeSeriesType(item.type ?? chart.type) as 'line' | 'bar' | 'scatter' | 'radar' | 'pie';
     const color = resolveSeriesColor(item, index);
     const isBarSeries = seriesType === 'bar';
     const isLineSeries = seriesType === 'line';
@@ -869,7 +1071,7 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       },
       barMaxWidth: isBarSeries ? 32 : undefined,
     };
-  });
+  }) as EChartsOption['series'];
 
   return {
     animation: false,

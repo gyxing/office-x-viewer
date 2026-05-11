@@ -15,7 +15,7 @@ import { emuToPx } from '../office/units';
 import { alphaToOpacity, alphaToRatio, resolveThemeColor, toHexColor, transformColor } from './colors';
 import { collectMedia, resolvePackageMediaRef, type OfficeRelationship } from '../office/media';
 import { readRelationships } from '../office/relationships';
-import { parseOfficeChartXml } from '../office/charts';
+import { decodeMojibake, parseOfficeChartXml } from '../office/charts';
 import type {
   ChartElement,
   GradientFill,
@@ -184,7 +184,10 @@ function readTheme(xml: string): ThemeModel {
     .forEach((node) => {
       const child = node.firstElementChild;
       if (!child) return;
-      const value = attr(child, 'val') ?? attr(child, 'lastClr');
+      const childName = child.localName.split(':').pop()?.toLowerCase();
+      const value = childName === 'sysclr'
+        ? attr(child, 'lastClr') ?? attr(child, 'val')
+        : attr(child, 'val') ?? attr(child, 'lastClr');
       if (value) colorScheme[node.localName] = value;
     });
 
@@ -724,6 +727,149 @@ function resolveXmlTarget(target: string | undefined, packageState: PackageState
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
+function decodeMojibakeDeep<T>(value: T): T {
+  if (typeof value === 'string') {
+    return decodeMojibake(value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => decodeMojibakeDeep(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, decodeMojibakeDeep(item)]),
+    ) as T;
+  }
+  return value;
+}
+
+function parseJsonProperty<T>(properties: Record<string, string>, key: string): T | undefined {
+  const raw = properties[key];
+  if (!raw) return undefined;
+  try {
+    return decodeMojibakeDeep(JSON.parse(raw)) as T;
+  } catch {
+    try {
+      return decodeMojibakeDeep(JSON.parse(raw.replace(/[?�]quot;/g, '"'))) as T;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+function readWebExtensionProperties(webExtensionNode: Element) {
+  const properties: Record<string, string> = {};
+  descendantsByLocalName(webExtensionNode, 'property').forEach((propertyNode) => {
+    const key = attr(propertyNode, 'key');
+    const value = attr(propertyNode, 'value');
+    if (key && value !== undefined) {
+      properties[key] = value;
+    }
+  });
+  return properties;
+}
+
+function normalizeLegendPosition(value: unknown): ChartElement['chart']['legendPosition'] | undefined {
+  if (typeof value !== 'string') return undefined;
+  const lower = value.toLowerCase();
+  if (lower.includes('bottom')) return 'bottom';
+  if (lower.includes('top')) return 'top';
+  if (lower.includes('left')) return 'left';
+  if (lower.includes('right')) return 'right';
+  return undefined;
+}
+
+function normalizeChartColor(value: unknown) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const color = (value as { color?: unknown; rgb?: unknown }).color ?? (value as { rgb?: unknown }).rgb;
+    if (typeof color === 'string') return color;
+  }
+  return undefined;
+}
+
+function collectChartColors(style: Record<string, unknown> | undefined, fallbackKey: 'seriesThemeColor' | 'fill') {
+  if (!style) return [];
+  if (fallbackKey === 'seriesThemeColor' && Array.isArray(style.seriesThemeColor)) {
+    return style.seriesThemeColor.map(normalizeChartColor).filter((color): color is string => Boolean(color));
+  }
+  const fill = style.fill as { props?: unknown[] } | undefined;
+  if (fallbackKey === 'fill' && Array.isArray(fill?.props)) {
+    return fill.props
+      .map((item) => normalizeChartColor((item as { color?: unknown } | undefined)?.color))
+      .filter((color): color is string => Boolean(color));
+  }
+  return [];
+}
+
+function readWpsLegendStyle(legend: unknown): ChartElement['chart']['legendStyle'] | undefined {
+  if (!legend || typeof legend !== 'object') return undefined;
+  const legendObject = legend as Record<string, unknown>;
+  const textStyle = legendObject.textStyle && typeof legendObject.textStyle === 'object'
+    ? (legendObject.textStyle as Record<string, unknown>)
+    : legendObject;
+  const fontFamily = textStyle.fontFamily;
+  const fontSize = Number(textStyle.fontSize);
+  const fontStyle = textStyle.fontStyle;
+  const fontWeight = textStyle.fontWeight;
+  const color = normalizeChartColor(textStyle.color);
+  const itemWidth = Number(legendObject.itemWidth);
+  const itemHeight = Number(legendObject.itemHeight);
+  const style = {
+    itemWidth: Number.isFinite(itemWidth) && itemWidth > 0 ? itemWidth : undefined,
+    itemHeight: Number.isFinite(itemHeight) && itemHeight > 0 ? itemHeight : undefined,
+    textStyle: {
+      color,
+      fontFamily: typeof fontFamily === 'string' ? fontFamily : undefined,
+      fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : undefined,
+      fontStyle: typeof fontStyle === 'string' ? fontStyle : undefined,
+      fontWeight: typeof fontWeight === 'string' || typeof fontWeight === 'number' ? fontWeight : undefined,
+    },
+  };
+  const normalizedTextStyle = Object.fromEntries(Object.entries(style.textStyle).filter(([, value]) => value !== undefined));
+  return {
+    ...(style.itemWidth !== undefined ? { itemWidth: style.itemWidth } : {}),
+    ...(style.itemHeight !== undefined ? { itemHeight: style.itemHeight } : {}),
+    ...(Object.keys(normalizedTextStyle).length ? { textStyle: normalizedTextStyle } : {}),
+  };
+}
+
+function readPercent(value: unknown) {
+  if (typeof value !== 'string') return undefined;
+  const parsed = Number(value.replace(/%$/, ''));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readRadiusPair(value: unknown): [string, string] | undefined {
+  if (!Array.isArray(value) || typeof value[0] !== 'string' || typeof value[1] !== 'string') return undefined;
+  return [value[0], value[1]];
+}
+
+function readWpsSeriesStyle(style: Record<string, unknown> | undefined) {
+  return Array.isArray(style?.series) && style.series[0] && typeof style.series[0] === 'object'
+    ? (style.series[0] as Record<string, unknown>)
+    : undefined;
+}
+
+function readWpsPiePointStyles(seriesStyle: Record<string, unknown> | undefined, count: number) {
+  const itemStyle = seriesStyle?.itemStyle;
+  if (!itemStyle || typeof itemStyle !== 'object') return undefined;
+  const borderColor = normalizeChartColor((itemStyle as { borderColor?: unknown }).borderColor);
+  const borderWidth = Number((itemStyle as { borderWidth?: unknown }).borderWidth);
+  if (!borderColor && !Number.isFinite(borderWidth)) return undefined;
+  return Array.from({ length: count }, () => ({
+    borderColor,
+    borderWidth: Number.isFinite(borderWidth) ? borderWidth : undefined,
+  }));
+}
+
+function resolveWebExtensionSnapshot(doc: XMLDocument, webExtensionPath: string, packageState: PackageState) {
+  const snapshot = descendantByLocalName(doc.documentElement, 'snapshot');
+  const embed = attr(snapshot, 'r:embed') ?? attr(snapshot, 'embed');
+  const relsPath = webExtensionPath.replace(/^ppt\/webExtensions\//, 'ppt/webExtensions/_rels/').concat('.rels');
+  const target = embed ? packageState.relationships[relsPath]?.[embed] : undefined;
+  return resolveMediaRef(target, packageState);
+}
+
 function readSlideBackground(
   bgNode: Element | null,
   theme: ThemeModel,
@@ -891,6 +1037,12 @@ function parseVisualTree(
 
   nodes.forEach((node, elementIndex) => {
     if (node.localName === 'pic') {
+      const chart = parseWpsWebExtensionChart(node, elementIndex, packageState, rels);
+      if (chart) {
+        chart.id = `${sourcePrefix}-${chart.id}`;
+        elements.push(chart);
+        return;
+      }
       const image = parseImageElement(node, elementIndex, packageState, rels);
       image.id = `${sourcePrefix}-${image.id}`;
       elements.push(image);
@@ -1246,6 +1398,211 @@ function parseImageElement(
     crop,
     alt: target?.split('/').pop(),
   };
+}
+
+function parseWpsWebExtensionChart(
+  node: Element,
+  index: number,
+  packageState: PackageState,
+  rels: Record<string, string>,
+): ChartElement | undefined {
+  const webExtensionRef = descendantByLocalName(node, 'webExtensionRef');
+  const relId = attr(webExtensionRef, 'r:id') ?? attr(webExtensionRef, 'id');
+  const target = relId ? rels[relId] : undefined;
+  const webExtensionPath = resolveXmlTarget(target, packageState);
+  const xml = webExtensionPath ? (packageState.entries.get(webExtensionPath) as string | undefined) : undefined;
+  if (!xml || !webExtensionPath) return undefined;
+
+  const doc = parseXml(xml);
+  const snapshotSrc = resolveWebExtensionSnapshot(doc, webExtensionPath, packageState);
+  const properties = readWebExtensionProperties(doc.documentElement);
+  const demoData = parseJsonProperty<Record<string, unknown>>(properties, 'demoData');
+  const style = parseJsonProperty<Record<string, unknown>>(properties, 'style');
+  const extStyle = parseJsonProperty<Record<string, unknown>>(properties, 'extStyle');
+  const dschart = parseJsonProperty<Record<string, unknown>>(properties, 'dschart');
+  const mapData = dschart && typeof dschart === 'object' ? (dschart as { json?: { data?: unknown[]; props?: Record<string, unknown> } }).json : undefined;
+  const chartStyle = style ?? mapData?.props;
+  const title = chartStyle?.title && typeof chartStyle.title === 'object' ? (chartStyle.title as { text?: unknown; show?: unknown }) : undefined;
+  const showLegend = chartStyle?.legend && typeof chartStyle.legend === 'object' ? (chartStyle.legend as { show?: unknown }).show : undefined;
+  const legendPosition = chartStyle?.legend && typeof chartStyle.legend === 'object'
+    ? normalizeLegendPosition((chartStyle.legend as { position?: unknown }).position)
+    : undefined;
+  const legendStyle = readWpsLegendStyle(chartStyle?.legend);
+  const showDataLabels = Boolean(
+    (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { show?: unknown }).show) ||
+      (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { numberLabel?: { show?: unknown }; textLabel?: { show?: unknown } }).numberLabel?.show) ||
+      (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { numberLabel?: { show?: unknown }; textLabel?: { show?: unknown } }).textLabel?.show),
+  );
+  const titleText =
+    typeof title?.show === 'boolean' && title.show !== false && typeof title?.text === 'string'
+      ? decodeMojibake(title.text)
+      : undefined;
+  const xfrm = childByLocalName(childByLocalName(node, 'spPr') ?? node, 'xfrm');
+  const off = childByLocalName(xfrm, 'off');
+  const ext = childByLocalName(xfrm, 'ext');
+  const x = emuValue(off, 'x') ?? 0;
+  const y = emuValue(off, 'y') ?? 0;
+  const width = emuValue(ext, 'cx') ?? 0;
+  const height = emuValue(ext, 'cy') ?? 0;
+
+  if (demoData && Array.isArray(demoData.data) && Array.isArray(demoData.data[0])) {
+    const rows = demoData.data.slice(1).filter((row): row is unknown[] => Array.isArray(row));
+    const headers = demoData.data[0] as unknown[];
+    const isPie = String(properties.type ?? '').toLowerCase().includes('pie');
+    const pieType = typeof style?.pieType === 'string' ? style.pieType.toLowerCase() : '';
+    const radius = readRadiusPair(style?.radius);
+    const seriesStyle = readWpsSeriesStyle(extStyle) ?? readWpsSeriesStyle(style);
+    const roseType =
+      seriesStyle?.roseType === 'radius' || seriesStyle?.roseType === 'area'
+        ? seriesStyle.roseType
+        : undefined;
+    const categories = rows.map((row) => decodeMojibake(String(row[0] ?? '').trim())).filter(Boolean);
+    const seriesNames = headers.slice(1).map((header, seriesIndex) =>
+      decodeMojibake(String(header ?? `Series ${seriesIndex + 1}`).trim()),
+    );
+    const palette = collectChartColors(chartStyle, 'seriesThemeColor');
+    const chartType = isPie && (pieType.includes('doughnut') || radius || roseType) ? 'doughnut' : isPie ? 'pie' : 'line';
+    const isPieChart = chartType === 'pie' || chartType === 'doughnut';
+    const piePointStyles = isPieChart ? readWpsPiePointStyles(seriesStyle, categories.length) : undefined;
+    const sourceSeries = seriesNames.length
+      ? seriesNames.map((name, seriesIndex) => ({
+          name,
+          values: rows.map((row) => Number(row[seriesIndex + 1] ?? 0) || 0),
+          type: isPieChart ? ('pie' as const) : ((style?.areaStyle && typeof style.areaStyle === 'object' && (style.areaStyle as { show?: unknown }).show) ? ('area' as const) : ('line' as const)),
+          color: palette[seriesIndex],
+          smooth:
+            Boolean(
+              (style?.smooth as boolean | undefined) ??
+                (Array.isArray(style?.series)
+                  ? (style.series as Array<{ smooth?: unknown }>)[0]?.smooth
+                  : undefined),
+            ),
+          marker:
+            style?.symbol && Array.isArray(style.symbol) && (style.symbol[0] as { show?: unknown; size?: unknown })?.show === false
+              ? { symbol: 'none' as const, size: Number((style.symbol[0] as { size?: unknown })?.size) || 6 }
+              : { size: Number((style?.series && Array.isArray(style.series) ? (style.series[0] as { symbolSize?: unknown })?.symbolSize : undefined)) || 6 },
+        }))
+      : [];
+
+    return {
+      id: `chart-${index}`,
+      type: 'chart',
+      chart: {
+        type: chartType,
+        title: titleText,
+        categories,
+        series: sourceSeries.length
+          ? sourceSeries.map((series) =>
+              isPieChart
+                ? {
+                    ...series,
+                    pointColors: palette.length ? palette : undefined,
+                    pointStyles: piePointStyles,
+                  }
+                : series,
+            )
+          : [
+              {
+                name: 'Series 1',
+                values: rows.map((row) => Number(row[1] ?? 0) || 0),
+                type: isPieChart ? ('pie' as const) : ('line' as const),
+                pointColors: palette.length ? palette : undefined,
+                pointStyles: piePointStyles,
+              },
+            ],
+        showLegend: showLegend !== false,
+        legendPosition,
+        legendStyle,
+        showDataLabels,
+        holeSize:
+          chartType === 'doughnut'
+            ? (() => {
+                const parsed = readPercent(radius?.[0]);
+                return Number.isFinite(parsed) ? parsed : undefined;
+              })()
+            : undefined,
+        radius: roseType ? radius : undefined,
+        roseType,
+        startAngle: Number.isFinite(Number(style?.startAngle)) ? Number(style?.startAngle) : undefined,
+        snapshotSrc,
+      },
+      chartId: relId,
+      chartPath: webExtensionPath,
+      x,
+      y,
+      width,
+      height,
+    };
+  }
+
+  if (dschart && typeof dschart === 'object' && typeof properties.dschart_type === 'string' && properties.dschart_type.toLowerCase() === 'map') {
+    const chartJson = mapData && typeof mapData === 'object' ? mapData : undefined;
+    const table = Array.isArray(chartJson?.data) && Array.isArray(chartJson.data[0]) ? chartJson.data[0] : undefined;
+    if (!table || table.length < 2) return undefined;
+
+    const rows = table.slice(1).filter((row): row is unknown[] => Array.isArray(row));
+    const categories = rows.map((row) => decodeMojibake(String(row[0] ?? '').trim())).filter(Boolean);
+    const valueIndex = 1;
+    const header = table[0];
+    const tierIndex = Array.isArray(header) && header.length > 2 ? 2 : undefined;
+    const seriesName = Array.isArray(header) && typeof header[valueIndex] === 'string'
+      ? decodeMojibake(header[valueIndex])
+      : 'Series 1';
+    const colors = collectChartColors(chartStyle, 'fill');
+    const tiers = tierIndex !== undefined
+      ? rows.map((row) => decodeMojibake(String(row[tierIndex] ?? '').trim()))
+      : [];
+    const tierNames = Array.from(new Set(tiers.filter(Boolean)));
+    const pointColors = tierNames.length
+      ? tiers.map((tier) => colors[tierNames.indexOf(tier)]).filter((color): color is string => Boolean(color))
+      : colors;
+
+    return {
+      id: `chart-${index}`,
+      type: 'chart',
+      chart: {
+        type: 'map',
+        title: titleText,
+        categories,
+        series: [
+          {
+            name: seriesName,
+            values: rows.map((row) => Number(row[valueIndex] ?? 0) || 0),
+            type: 'map' as const,
+            pointColors: pointColors.length ? pointColors : undefined,
+            pointLabels: tiers.length ? tiers : undefined,
+          },
+        ],
+        showLegend: showLegend !== false,
+        legendPosition,
+        legendStyle,
+        showDataLabels,
+        mapSeriesName: seriesName,
+        mapName: 'china',
+        mapGeoJsonUrl: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+        mapRegion:
+          chartStyle?.mapRegion && typeof chartStyle.mapRegion === 'object'
+            ? decodeMojibake(
+                String(
+                  (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).city ||
+                    (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).province ||
+                    (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).country ||
+                    '',
+                ),
+              )
+            : undefined,
+        snapshotSrc,
+      },
+      chartId: relId,
+      chartPath: webExtensionPath,
+      x,
+      y,
+      width,
+      height,
+    };
+  }
+
+  return undefined;
 }
 
 function parseChartElement(

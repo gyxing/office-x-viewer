@@ -11,12 +11,15 @@ type OfficeChartViewProps = {
   zoom?: number;
 };
 
+const registeredMaps = new Set<string>();
+
 export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChartViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<import('echarts').EChartsType | null>(null);
   const echartsRef = useRef<typeof import('echarts') | null>(null);
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
   const displayWidth = width * (zoom / 100);
   const displayHeight = height * (zoom / 100);
 
@@ -41,6 +44,7 @@ export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChar
   );
 
   useEffect(() => {
+    setMapFailed(false);
     let disposed = false;
     let resizeObserver: ResizeObserver | undefined;
     let intersectionObserver: IntersectionObserver | undefined;
@@ -61,6 +65,28 @@ export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChar
       if (!visible || !hostRef.current || chartRef.current) return;
       const echarts = echartsRef.current ?? (await import('echarts'));
       echartsRef.current = echarts;
+      if (chart.type === 'map') {
+        const mapName = chart.mapName ?? 'china';
+        if (!registeredMaps.has(mapName)) {
+          if (!chart.mapGeoJsonUrl) {
+            setMapFailed(true);
+            return;
+          }
+
+          try {
+            const response = await fetch(chart.mapGeoJsonUrl);
+            if (!response.ok) throw new Error(`Map data request failed: ${response.status}`);
+            const geoJson = await response.json();
+            if (disposed) return;
+            echarts.registerMap(mapName, geoJson);
+            registeredMaps.add(mapName);
+            setMapFailed(false);
+          } catch {
+            if (!disposed) setMapFailed(true);
+            return;
+          }
+        }
+      }
       if (disposed || !hostRef.current) return;
       const instance = echarts.init(hostRef.current, undefined, { renderer: 'canvas' });
       chartRef.current = instance;
@@ -93,6 +119,27 @@ export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChar
 
   if (!width || !height) {
     return <Empty description="图表尺寸无效" />;
+  }
+
+  if (chart.type === 'map' && mapFailed) {
+    if (!chart.snapshotSrc) {
+      return <Empty description="地图数据加载失败" />;
+    }
+
+    return (
+      <div style={outerStyle}>
+        <img
+          src={chart.snapshotSrc}
+          alt={chart.title ?? chart.mapRegion ?? ''}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+          }}
+        />
+      </div>
+    );
   }
 
   return (

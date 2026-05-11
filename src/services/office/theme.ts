@@ -82,7 +82,10 @@ export function readOfficeTheme(xml?: string): OfficeTheme {
   Object.keys(DEFAULT_OFFICE_THEME.colorScheme).forEach((name) => {
     const node = childByLocalName(clrScheme, name);
     const child = node?.firstElementChild;
-    const value = attr(child, 'val') ?? attr(child, 'lastClr');
+    const childName = child?.localName.split(':').pop()?.toLowerCase();
+    const value = childName === 'sysclr'
+      ? attr(child, 'lastClr') ?? attr(child, 'val')
+      : attr(child, 'val') ?? attr(child, 'lastClr');
     if (value) colorScheme[name] = value;
   });
 
