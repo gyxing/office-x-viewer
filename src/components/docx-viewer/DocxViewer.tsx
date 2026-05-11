@@ -18,14 +18,27 @@ type DocxViewerProps = {
   zoom: number;
 };
 
-function textStyleToCss(style?: DocxTextStyle): CSSProperties {
-  return {
-    fontWeight: style?.bold ? 700 : undefined,
-    fontStyle: style?.italic ? 'italic' : undefined,
-    textDecoration: style?.underline ? 'underline' : undefined,
+function textStyleToCss(style?: DocxTextStyle, options?: { includeBackground?: boolean }): CSSProperties {
+  const css: CSSProperties = {
+    fontWeight: style?.bold === true ? 700 : style?.bold === false ? 400 : undefined,
+    fontStyle: style?.italic === true ? 'italic' : style?.italic === false ? 'normal' : undefined,
+    textDecoration: [style?.underline ? 'underline' : '', style?.strike ? 'line-through' : '']
+      .filter(Boolean)
+      .join(' ') || undefined,
     color: style?.color,
     fontSize: style?.fontSize,
+    fontFamily: style?.fontFamily,
+    textTransform: style?.allCaps ? 'uppercase' : undefined,
+    fontVariant: style?.smallCaps ? 'small-caps' : undefined,
+    background: options?.includeBackground ? style?.backgroundColor : undefined,
   };
+  return Object.fromEntries(Object.entries(css).filter(([, value]) => value !== undefined)) as CSSProperties;
+}
+
+function emptyParagraphHeight(block: DocxParagraphBlock) {
+  const fontSize = block.style?.fontSize ?? 14;
+  if (block.lineHeight === undefined) return fontSize * 1.2;
+  return block.lineHeight > 4 ? block.lineHeight : fontSize * block.lineHeight;
 }
 
 function DocxImage({ inline }: { inline: DocxImageInline }) {
@@ -41,20 +54,107 @@ function DocxImage({ inline }: { inline: DocxImageInline }) {
         maxWidth: '100%',
         height: 'auto',
         verticalAlign: 'middle',
-        margin: '8px 0',
       }}
     />
   );
 }
 
+function DocxInlineChart({ inline }: { inline: Extract<DocxInline, { type: 'chart' }> }) {
+  const chart = inline.chart;
+  return (
+    <span style={{ display: 'inline-block', width: chart.width, height: chart.height, verticalAlign: 'middle' }}>
+      <OfficeChartView chart={chart.chart} width={chart.width} height={chart.height} zoom={100} />
+    </span>
+  );
+}
+
 function InlineContent({ inline }: { inline: DocxInline }) {
-  if (inline.type === 'break') {
-    return <br />;
-  }
-  if (inline.type === 'image') {
-    return <DocxImage inline={inline} />;
-  }
-  return <span style={textStyleToCss(inline.style)}>{inline.text}</span>;
+  if (inline.type === 'break') return <br />;
+  if (inline.type === 'image') return <DocxImage inline={inline} />;
+  if (inline.type === 'chart') return <DocxInlineChart inline={inline} />;
+  if (inline.type === 'shape') return <DocxShape inline={inline} />;
+  return <span style={textStyleToCss(inline.style, { includeBackground: true })}>{inline.text}</span>;
+}
+
+function DocxShape({ inline }: { inline: Extract<DocxInline, { type: 'shape' }> }) {
+  const shape = inline.shape;
+  const justifyContent = (align?: 'top' | 'middle' | 'bottom') =>
+    align === 'middle' ? 'center' : align === 'bottom' ? 'flex-end' : 'flex-start';
+  const shapePath = (item: typeof shape.items[number]) => {
+    if (item.path) return item.path;
+    if (item.kind === 'ellipse') {
+      return `M ${item.width / 2} 0 A ${item.width / 2} ${item.height / 2} 0 1 0 ${item.width / 2} ${item.height} A ${item.width / 2} ${item.height / 2} 0 1 0 ${item.width / 2} 0`;
+    }
+    return undefined;
+  };
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        position: 'relative',
+        width: shape.width,
+        height: shape.height,
+        maxWidth: '100%',
+        verticalAlign: 'middle',
+        margin: '8px 0',
+      }}
+    >
+      {shape.items.map((item) => {
+        const path = shapePath(item);
+        const drawAsSvg = Boolean(path) || item.kind === 'line';
+        return (
+          <div
+            key={item.id}
+            style={{
+              position: 'absolute',
+              left: item.left,
+              top: item.top,
+              width: item.width,
+              height: item.height,
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: justifyContent(item.textVerticalAlign),
+              overflow: 'visible',
+              background: drawAsSvg ? undefined : item.fillColor,
+              border: drawAsSvg ? undefined : item.border,
+              borderRadius: item.borderRadius,
+              paddingTop: item.paddingTop,
+              paddingRight: item.paddingRight,
+              paddingBottom: item.paddingBottom,
+              paddingLeft: item.paddingLeft,
+            }}
+          >
+            {path ? (
+            <svg
+              viewBox={item.viewBox ?? `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`}
+              preserveAspectRatio="none"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                overflow: 'visible',
+              }}
+            >
+              <path
+                d={path}
+                fill={item.fillColor ?? 'none'}
+                stroke={item.strokeColor ?? 'none'}
+                strokeWidth={item.strokeWidth}
+                strokeDasharray={item.strokeDasharray}
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            ) : null}
+            {item.paragraphs?.map((paragraph) => (
+              <Paragraph key={paragraph.id} block={paragraph} compact />
+            ))}
+          </div>
+        );
+      })}
+    </span>
+  );
 }
 
 function ParagraphComponent({ block, compact = false }: { block: DocxParagraphBlock; compact?: boolean }) {
@@ -63,14 +163,25 @@ function ParagraphComponent({ block, compact = false }: { block: DocxParagraphBl
     () => ({
       margin: 0,
       marginTop: compact ? 0 : block.spacingBefore,
-      marginBottom: compact ? 4 : block.spacingAfter ?? 12,
-      paddingLeft: block.indentLeft,
-      minHeight: hasContent ? undefined : compact ? 16 : 20,
+      marginRight: block.indentRight,
+      marginBottom: compact ? block.spacingAfter ?? 0 : block.spacingAfter ?? 0,
+      marginLeft: block.indentLeft,
+      paddingLeft: block.paddingLeft,
+      paddingRight: block.paddingRight,
+      minHeight: hasContent ? undefined : emptyParagraphHeight(block),
       textAlign: block.align,
-      lineHeight: 1.65,
-      color: '#1f2937',
-      fontSize: block.isTitle ? 20 : block.style?.fontSize ?? 14,
-      fontWeight: block.isTitle ? 700 : block.style?.bold ? 700 : 400,
+      lineHeight: block.lineHeight,
+      color: block.style?.color ?? '#000',
+      fontSize: block.style?.fontSize ?? 14,
+      fontWeight: block.style?.bold ? 700 : 400,
+      background: block.backgroundColor,
+      borderTop: block.borderTop,
+      borderRight: block.borderRight,
+      borderBottom: block.borderBottom,
+      borderLeft: block.borderLeft,
+      textIndent: block.firstLineIndent,
+      paddingTop: block.paddingTop,
+      paddingBottom: block.paddingBottom,
       ...textStyleToCss(block.style),
     }),
     [block, compact, hasContent],
@@ -87,18 +198,41 @@ function ParagraphComponent({ block, compact = false }: { block: DocxParagraphBl
 
 const Paragraph = memo(ParagraphComponent);
 
-function TableBlockComponent({ block }: { block: DocxTableBlock }) {
+function TableBlockComponent({ block, availableWidth }: { block: DocxTableBlock; availableWidth?: number }) {
+  const marginLeft = block.align === 'center' ? 'auto' : block.align === 'right' ? 'auto' : 0;
+  const marginRight = block.align === 'center' ? 'auto' : block.align === 'right' ? 0 : 'auto';
+  const totalColumns = block.columns?.reduce((sum, width) => sum + width, 0) ?? block.width ?? 0;
+  const shouldFit = Boolean(availableWidth && block.width && block.width > availableWidth);
+  const tableWidth = shouldFit ? '100%' : block.width ?? availableWidth ?? '100%';
   return (
-    <div style={{ overflowX: 'auto', margin: '12px 0 16px' }}>
+    <div style={{ margin: 0 }}>
       <table
         style={{
           borderCollapse: 'collapse',
-          width: '100%',
+          width: tableWidth,
+          marginLeft,
+          marginRight,
           tableLayout: 'fixed',
           fontSize: 13,
-          color: '#1f2937',
+          color: '#000',
+          fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif',
         }}
       >
+        {block.columns?.length ? (
+          <colgroup>
+            {block.columns.map((width, index) => (
+              <col
+                key={`${block.id}-col-${index}`}
+                style={{
+                  width:
+                    shouldFit && totalColumns > 0
+                      ? `${(width / totalColumns) * 100}%`
+                      : width,
+                }}
+              />
+            ))}
+          </colgroup>
+        ) : null}
         <tbody>
           {block.rows.map((row) => (
             <tr key={row.id}>
@@ -107,21 +241,31 @@ function TableBlockComponent({ block }: { block: DocxTableBlock }) {
                   key={cell.id}
                   colSpan={cell.colSpan && cell.colSpan > 1 ? cell.colSpan : undefined}
                   style={{
-                    border: '1px solid #cfd7e3',
-                    padding: '8px 10px',
-                    width: cell.width,
+                    borderTop: cell.borderTop ?? (cell.hasBorderTop ? 'none' : '1px solid #cfd7e3'),
+                    borderRight: cell.borderRight ?? (cell.hasBorderRight ? 'none' : '1px solid #cfd7e3'),
+                    borderBottom: cell.borderBottom ?? (cell.hasBorderBottom ? 'none' : '1px solid #cfd7e3'),
+                    borderLeft: cell.borderLeft ?? (cell.hasBorderLeft ? 'none' : '1px solid #cfd7e3'),
+                    paddingTop: cell.paddingTop ?? 0,
+                    paddingRight: cell.paddingRight ?? 7,
+                    paddingBottom: cell.paddingBottom ?? 0,
+                    paddingLeft: cell.paddingLeft ?? 7,
+                    width: shouldFit ? undefined : cell.width,
                     verticalAlign: cell.verticalAlign,
                     background: cell.backgroundColor ?? '#fff',
-                    wordBreak: 'break-word',
+                    wordBreak: cell.noWrap ? 'normal' : 'break-word',
+                    overflowWrap: cell.noWrap ? 'normal' : 'anywhere',
+                    whiteSpace: cell.noWrap ? 'nowrap' : undefined,
+                    color: '#000',
+                    fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif',
                   }}
                 >
-                  {cell.blocks.map((block) =>
-                    block.type === 'chart' ? (
-                      <div key={block.id} style={{ margin: '8px 0' }}>
-                        <OfficeChartView chart={block.chart} width={block.width} height={block.height} zoom={100} />
+                  {cell.blocks.map((item) =>
+                    item.type === 'chart' ? (
+                      <div key={item.id} style={{ margin: '8px 0' }}>
+                        <OfficeChartView chart={item.chart} width={item.width} height={item.height} zoom={100} />
                       </div>
                     ) : (
-                      <Paragraph key={block.id} block={block} compact />
+                      <Paragraph key={item.id} block={item} compact />
                     ),
                   )}
                 </td>
@@ -138,25 +282,22 @@ const TableBlock = memo(TableBlockComponent);
 
 function ChartBlock({ block, zoom }: { block: DocxChartBlock; zoom: number }) {
   return (
-    <div style={{ margin: '16px 0' }}>
+    <div style={{ margin: 0 }}>
       <OfficeChartView chart={block.chart} width={block.width} height={block.height} zoom={zoom} />
     </div>
   );
 }
 
-function BlockRenderer({ block }: { block: DocxBlock }) {
-  if (block.type === 'table') {
-    return <TableBlock block={block} />;
-  }
-  if (block.type === 'chart') {
-    return <ChartBlock block={block} zoom={100} />;
-  }
+function BlockRenderer({ block, availableWidth }: { block: DocxBlock; availableWidth?: number }) {
+  if (block.type === 'table') return <TableBlock block={block} availableWidth={availableWidth} />;
+  if (block.type === 'chart') return <ChartBlock block={block} zoom={100} />;
   return <Paragraph block={block} />;
 }
 
 export function DocxViewer({ document, zoom }: DocxViewerProps) {
   const scale = zoom / 100;
   const page = document?.page;
+  const contentWidth = page ? page.width - page.marginLeft - page.marginRight : undefined;
   const summaryText = useMemo(
     () => (document ? `${document.blocks.length} 个内容块 / ${document.images.length} 张图片` : ''),
     [document],
@@ -182,6 +323,10 @@ export function DocxViewer({ document, zoom }: DocxViewerProps) {
             background: '#fff',
             boxShadow: '0 14px 30px rgba(15, 23, 42, 0.14)',
             boxSizing: 'border-box',
+            borderTop: page.borderTop,
+            borderRight: page.borderRight,
+            borderBottom: page.borderBottom,
+            borderLeft: page.borderLeft,
             transform: `scale(${scale})`,
             transformOrigin: 'top left',
             fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif',
@@ -236,7 +381,7 @@ export function DocxViewer({ document, zoom }: DocxViewerProps) {
         <div style={pageShellStyle}>
           <article style={articleStyle}>
             {document.blocks.map((block) => (
-              <BlockRenderer key={block.id} block={block} />
+              <BlockRenderer key={block.id} block={block} availableWidth={contentWidth} />
             ))}
           </article>
         </div>

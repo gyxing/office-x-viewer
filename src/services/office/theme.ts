@@ -1,8 +1,9 @@
-import { attr, childByLocalName, parseXml } from './xml';
+import { attr, childByLocalName, childrenByLocalName, parseXml } from './xml';
 
 export type OfficeTheme = {
   colorScheme: Record<string, string>;
   colorMap?: Record<string, string>;
+  fontScheme?: Record<string, string>;
 };
 
 const DEFAULT_COLOR_MAP: Record<string, string> = {
@@ -45,12 +46,38 @@ function toHexColor(value?: string) {
   return undefined;
 }
 
+function readFontScheme(fontSchemeNode: Element | null | undefined) {
+  const scheme: Record<string, string> = {};
+  if (!fontSchemeNode) return scheme;
+
+  ['majorFont', 'minorFont'].forEach((bucket) => {
+    const node = childByLocalName(fontSchemeNode, bucket);
+    if (!node) return;
+    const latin = childByLocalName(node, 'latin');
+    const ea = childByLocalName(node, 'ea');
+    const cs = childByLocalName(node, 'cs');
+    const eastAsia =
+      attr(ea, 'typeface') ||
+      childrenByLocalName(node, 'font').find((font) =>
+        ['Hans', 'Hant', 'Jpan', 'Hang'].includes(attr(font, 'script') ?? ''),
+      )?.getAttribute('typeface');
+    const value = [eastAsia, attr(latin, 'typeface'), attr(cs, 'typeface')]
+      .filter(Boolean)
+      .join(', ');
+    if (value) scheme[bucket] = value;
+  });
+
+  return scheme;
+}
+
 export function readOfficeTheme(xml?: string): OfficeTheme {
   if (!xml) return DEFAULT_OFFICE_THEME;
 
   const doc = parseXml(xml);
   const colorScheme: Record<string, string> = { ...DEFAULT_OFFICE_THEME.colorScheme };
-  const clrScheme = childByLocalName(childByLocalName(doc.documentElement, 'themeElements'), 'clrScheme');
+  const themeElements = childByLocalName(doc.documentElement, 'themeElements');
+  const clrScheme = childByLocalName(themeElements, 'clrScheme');
+  const fontScheme = readFontScheme(childByLocalName(themeElements, 'fontScheme'));
 
   Object.keys(DEFAULT_OFFICE_THEME.colorScheme).forEach((name) => {
     const node = childByLocalName(clrScheme, name);
@@ -62,6 +89,7 @@ export function readOfficeTheme(xml?: string): OfficeTheme {
   return {
     colorScheme,
     colorMap: DEFAULT_COLOR_MAP,
+    fontScheme,
   };
 }
 

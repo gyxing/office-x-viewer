@@ -11,6 +11,17 @@ export type ThemeModel = {
   colorMap?: Record<string, string>;
 };
 
+export type GradientStop = {
+  offset: number;
+  color: string;
+};
+
+export type GradientFill = {
+  type: 'linear';
+  angle: number;
+  stops: GradientStop[];
+};
+
 export type SlideModel = {
   id: string;
   index: number;
@@ -94,7 +105,9 @@ export type TextElement = BaseElement & {
   paragraphs: TextParagraph[];
   boxStyle?: TextStyle;
   shape?: string;
-  fill?: string | null;
+  path?: string;
+  viewBox?: string;
+  fill?: string | GradientFill | null;
   fillOpacity?: number;
   stroke?: string | null;
   strokeOpacity?: number;
@@ -107,7 +120,9 @@ export type TextElement = BaseElement & {
 export type ShapeElement = BaseElement & {
   type: 'shape';
   shape: string;
-  fill?: string | null;
+  path?: string;
+  viewBox?: string;
+  fill?: string | GradientFill | null;
   fillOpacity?: number;
   stroke?: string | null;
   strokeOpacity?: number;
@@ -126,7 +141,27 @@ export type ImageElement = BaseElement & {
 
 export type TableElement = BaseElement & {
   type: 'table';
-  rows: Array<Array<{ text: string; style?: TextStyle }>>;
+  columnWidths?: number[];
+  rowHeights?: number[];
+  rows: TableCell[][];
+};
+
+export type TableCell = {
+  text: string;
+  paragraphs?: TextParagraph[];
+  style?: TextStyle;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+  borderColor?: string;
+  borderOpacity?: number;
+  borderWidth?: number;
+  margins?: {
+    left?: number;
+    right?: number;
+    top?: number;
+    bottom?: number;
+  };
+  verticalAlign?: 'top' | 'middle' | 'bottom';
 };
 
 export type GroupElement = BaseElement & {

@@ -7,7 +7,6 @@ import {
   childrenByLocalName,
   descendantByLocalName,
   descendantsByLocalName,
-  matchesLocalName,
   parseXml,
   textContent,
 } from '../office/xml';
@@ -15,7 +14,7 @@ import { collectMedia, resolvePackageMediaRef, type OfficeRelationship } from '.
 import { readRelationships } from '../office/relationships';
 import { emuToPx } from '../office/units';
 import { parseOfficeChartXml } from '../office/charts';
-import { readOfficeTheme, type OfficeTheme } from '../office/theme';
+import { readOfficeTheme, resolveOfficeThemeColor, type OfficeTheme } from '../office/theme';
 import type {
   XlsxCell,
   XlsxCellStyle,
@@ -38,7 +37,7 @@ type ParsedStyle = {
 type StyleBook = {
   fonts: XlsxCellStyle[];
   fills: Array<Pick<XlsxCellStyle, 'backgroundColor'>>;
-  borders: Array<Pick<XlsxCellStyle, 'border'>>;
+  borders: Array<Pick<XlsxCellStyle, 'border' | 'borderTop' | 'borderRight' | 'borderBottom' | 'borderLeft' | 'borderColor' | 'borderWidth'>>;
   styles: ParsedStyle[];
 };
 
@@ -55,10 +54,29 @@ type XlsxPackageState = {
   theme: OfficeTheme;
 };
 
-const DEFAULT_COLUMN_WIDTH = 88;
-const DEFAULT_ROW_HEIGHT = 28;
+const DEFAULT_COLUMN_WIDTH_CHARACTERS = 8.43;
+const DEFAULT_ROW_HEIGHT_POINTS = 15;
+const DEFAULT_COLUMN_WIDTH = 64;
+const DEFAULT_ROW_HEIGHT = 20;
 const MAX_RENDERED_EMPTY_ROWS = 200;
 const MAX_RENDERED_EMPTY_COLUMNS = 80;
+
+const THEME_COLOR_INDEXES = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
+const INDEXED_COLORS = [
+  '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
+  '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
+  '800000', '008000', '000080', '808000', '800080', '008080', 'C0C0C0', '808080',
+  '9999FF', '993366', 'FFFFCC', 'CCFFFF', '660066', 'FF8080', '0066CC', 'CCCCFF',
+  '000080', 'FF00FF', 'FFFF00', '00FFFF', '800080', '800000', '008080', '0000FF',
+  '00CCFF', 'CCFFFF', 'CCFFCC', 'FFFF99', '99CCFF', 'FF99CC', 'CC99FF', 'FFCC99',
+  '3366FF', '33CCCC', '99CC00', 'FFCC00', 'FF9900', 'FF6600', '666699', '969696',
+  '003366', '339966', '003300', '333300', '993300', '993366', '333399', '333333',
+];
+
+type SheetMetrics = {
+  defaultColumnWidth: number;
+  defaultRowHeight: number;
+};
 
 function buildPackageState(entries: OfficeEntryMap): XlsxPackageState {
   const relationships: XlsxPackageState['relationships'] = {};
@@ -142,14 +160,94 @@ function parseRange(range?: string) {
   };
 }
 
-function parseColor(node: Element | null | undefined) {
-  const rgb = attr(node, 'rgb');
-  if (!rgb) return undefined;
-  const hex = rgb.length === 8 ? rgb.slice(2) : rgb;
-  return `#${hex}`;
+function normalizeHexColor(value?: string) {
+  if (!value) return undefined;
+  const normalized = value.replace(/^#/, '');
+  if (!/^[0-9a-f]{6}$|^[0-9a-f]{8}$/i.test(normalized)) return undefined;
+  return `#${normalized.length === 8 ? normalized.slice(2) : normalized}`;
 }
 
-function parseStyles(xml: string): StyleBook {
+function clamp255(value: number) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '');
+  const value = Number.parseInt(normalized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b].map((value) => clamp255(value).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function applyTint(hex: string | undefined, tintValue?: string) {
+  if (!hex || tintValue === undefined) return hex;
+  const tint = Number(tintValue);
+  if (!Number.isFinite(tint) || tint === 0) return hex;
+  const { r, g, b } = hexToRgb(hex);
+  if (tint < 0) {
+    const ratio = 1 + tint;
+    return rgbToHex(r * ratio, g * ratio, b * ratio);
+  }
+  return rgbToHex(r + (255 - r) * tint, g + (255 - g) * tint, b + (255 - b) * tint);
+}
+
+function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
+  if (!node) return undefined;
+  if (attr(node, 'auto') === '1') return '#000000';
+  const rgb = attr(node, 'rgb');
+  const themeIndex = attr(node, 'theme');
+  const indexed = attr(node, 'indexed');
+  const base =
+    normalizeHexColor(rgb) ??
+    resolveOfficeThemeColor(themeIndex ? THEME_COLOR_INDEXES[Number(themeIndex)] : undefined, theme) ??
+    normalizeHexColor(indexed ? INDEXED_COLORS[Number(indexed)] : undefined);
+  return applyTint(base, attr(node, 'tint'));
+}
+
+function parseBorderStyle(node: Element | null | undefined, theme: OfficeTheme) {
+  if (!node) return undefined;
+  const style = attr(node, 'style');
+  if (!style) return undefined;
+  const color = parseColor(childByLocalName(node, 'color'), theme);
+  return {
+    style,
+    color,
+    width:
+      style === 'hair'
+        ? 0.5
+        : style === 'medium' || style === 'double'
+          ? 2
+          : style === 'thick'
+            ? 3
+            : 1,
+  };
+}
+
+function borderToCss(border?: ReturnType<typeof parseBorderStyle>) {
+  if (!border) return undefined;
+  const cssStyle =
+    border.style === 'dashed' || border.style === 'dashDot' || border.style === 'dashDotDot' || border.style === 'slantDashDot'
+      ? 'dashed'
+      : border.style === 'dotted'
+        ? 'dotted'
+        : border.style === 'double'
+          ? 'double'
+          : 'solid';
+  return `${border.width ?? 1}px ${cssStyle} ${border.color ?? '#000000'}`;
+}
+
+function pointToCssPx(point?: number) {
+  if (!point || !Number.isFinite(point)) return undefined;
+  return point * (96 / 72);
+}
+
+function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
   if (!xml) return { fonts: [], fills: [], borders: [], styles: [] };
   const doc = parseXml(xml);
   const styleSheet = doc.documentElement;
@@ -159,21 +257,41 @@ function parseStyles(xml: string): StyleBook {
     bold: Boolean(childByLocalName(fontNode, 'b')),
     italic: Boolean(childByLocalName(fontNode, 'i')),
     underline: Boolean(childByLocalName(fontNode, 'u')),
-    color: parseColor(childByLocalName(fontNode, 'color')),
+    color: parseColor(childByLocalName(fontNode, 'color'), theme),
+    fontSize: pointToCssPx(Number(attr(childByLocalName(fontNode, 'sz'), 'val') ?? 0)),
+    fontFamily:
+      attr(childByLocalName(fontNode, 'name'), 'val') ??
+      attr(childByLocalName(fontNode, 'family'), 'val') ??
+      attr(childByLocalName(fontNode, 'charset'), 'val') ??
+      undefined,
   }));
 
   const fillsNode = childByLocalName(styleSheet, 'fills');
   const fills = childrenByLocalName(fillsNode, 'fill').map((fillNode) => {
     const pattern = childByLocalName(fillNode, 'patternFill');
     return {
-      backgroundColor: parseColor(childByLocalName(pattern, 'fgColor')),
+      backgroundColor: parseColor(childByLocalName(pattern, 'fgColor'), theme),
     };
   });
 
   const bordersNode = childByLocalName(styleSheet, 'borders');
-  const borders = childrenByLocalName(bordersNode, 'border').map((borderNode) => ({
-    border: Array.from(borderNode.children).some((side) => Boolean(attr(side, 'style'))),
-  }));
+  const borders = childrenByLocalName(bordersNode, 'border').map((borderNode) => {
+    const left = parseBorderStyle(childByLocalName(borderNode, 'left'), theme);
+    const right = parseBorderStyle(childByLocalName(borderNode, 'right'), theme);
+    const top = parseBorderStyle(childByLocalName(borderNode, 'top'), theme);
+    const bottom = parseBorderStyle(childByLocalName(borderNode, 'bottom'), theme);
+    const color = left?.color ?? right?.color ?? top?.color ?? bottom?.color;
+    const width = left?.width ?? right?.width ?? top?.width ?? bottom?.width;
+    return {
+      border: Boolean(left || right || top || bottom),
+      borderTop: borderToCss(top),
+      borderRight: borderToCss(right),
+      borderBottom: borderToCss(bottom),
+      borderLeft: borderToCss(left),
+      borderColor: color,
+      borderWidth: width,
+    };
+  });
 
   const cellXfs = childByLocalName(styleSheet, 'cellXfs');
   const styles = childrenByLocalName(cellXfs, 'xf').map((xfNode): ParsedStyle => {
@@ -224,37 +342,38 @@ function resolveStyle(styleId: number | undefined, styleBook: StyleBook): XlsxCe
   ) as XlsxCellStyle;
 }
 
-function excelWidthToPx(width?: number) {
-  if (!width || !Number.isFinite(width)) return DEFAULT_COLUMN_WIDTH;
+function excelWidthToPx(width?: number, fallback = DEFAULT_COLUMN_WIDTH) {
+  if (!width || !Number.isFinite(width)) return fallback;
   return Math.max(40, Math.round(width * 7 + 5));
 }
 
-function pointToPx(point?: number) {
-  if (!point || !Number.isFinite(point)) return DEFAULT_ROW_HEIGHT;
-  return Math.max(22, Math.round(point * (96 / 72)));
+function pointToPx(point?: number, fallback = DEFAULT_ROW_HEIGHT) {
+  if (!point || !Number.isFinite(point)) return fallback;
+  return Math.max(1, Math.round(point * (96 / 72)));
 }
 
-function getColumnWidth(columns: XlsxColumn[], columnIndex: number) {
-  return columns[columnIndex - 1]?.width ?? DEFAULT_COLUMN_WIDTH;
+function getColumnWidth(columns: XlsxColumn[], columnIndex: number, metrics: SheetMetrics) {
+  return columns[columnIndex - 1]?.width ?? metrics.defaultColumnWidth;
 }
 
-function getRowHeight(rowHeights: Map<number, number>, rowIndex: number) {
-  return rowHeights.get(rowIndex) ?? DEFAULT_ROW_HEIGHT;
+function getRowHeight(rowHeights: Map<number, number>, rowIndex: number, metrics: SheetMetrics) {
+  return rowHeights.get(rowIndex) ?? metrics.defaultRowHeight;
 }
 
 function anchorPosition(
   anchor: { row: number; column: number; rowOffset: number; columnOffset: number },
   columns: XlsxColumn[],
   rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
 ) {
   let x = 0;
   for (let column = 1; column < anchor.column; column += 1) {
-    x += getColumnWidth(columns, column);
+    x += getColumnWidth(columns, column, metrics);
   }
 
   let y = 0;
   for (let row = 1; row < anchor.row; row += 1) {
-    y += getRowHeight(rowHeights, row);
+    y += getRowHeight(rowHeights, row, metrics);
   }
 
   return {
@@ -263,7 +382,15 @@ function anchorPosition(
   };
 }
 
-function readColumns(sheetNode: Element, maxColumn: number): XlsxColumn[] {
+function readSheetMetrics(sheetNode: Element): SheetMetrics {
+  const sheetFormat = childByLocalName(sheetNode, 'sheetFormatPr');
+  return {
+    defaultColumnWidth: excelWidthToPx(Number(attr(sheetFormat, 'defaultColWidth') ?? DEFAULT_COLUMN_WIDTH_CHARACTERS)),
+    defaultRowHeight: pointToPx(Number(attr(sheetFormat, 'defaultRowHeight') ?? DEFAULT_ROW_HEIGHT_POINTS)),
+  };
+}
+
+function readColumns(sheetNode: Element, maxColumn: number, metrics: SheetMetrics): XlsxColumn[] {
   const widths = new Map<number, XlsxColumn>();
   descendantsByLocalName(sheetNode, 'col').forEach((node) => {
     const min = Number(attr(node, 'min') ?? 1);
@@ -272,7 +399,7 @@ function readColumns(sheetNode: Element, maxColumn: number): XlsxColumn[] {
       widths.set(index, {
         index,
         label: columnIndexToLabel(index),
-        width: excelWidthToPx(Number(attr(node, 'width'))),
+        width: excelWidthToPx(Number(attr(node, 'width')), metrics.defaultColumnWidth),
         hidden: attr(node, 'hidden') === '1',
       });
     }
@@ -283,7 +410,7 @@ function readColumns(sheetNode: Element, maxColumn: number): XlsxColumn[] {
     return widths.get(index) ?? {
       index,
       label: columnIndexToLabel(index),
-      width: DEFAULT_COLUMN_WIDTH,
+      width: metrics.defaultColumnWidth,
     };
   });
 }
@@ -307,27 +434,45 @@ function resolveXmlTarget(target: string | undefined, packageState: XlsxPackageS
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
+function readDrawingXml(sheetNode: Element, sheetPath: string, packageState: XlsxPackageState) {
+  const drawing = descendantByLocalName(sheetNode, 'drawing');
+  const drawingRelId = attr(drawing, 'r:id') ?? attr(drawing, 'id');
+  if (!drawingRelId) return undefined;
+
+  const sheetRelPath = sheetPath.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/').concat('.rels');
+  const drawingPath = packageState.relationships[sheetRelPath]?.[drawingRelId]?.target;
+  const drawingXml = drawingPath ? readXml(packageState.entries, drawingPath) : '';
+  return drawingPath && drawingXml ? { drawingPath, drawingXml } : undefined;
+}
+
+function readDrawingBounds(sheetNode: Element, sheetPath: string, packageState: XlsxPackageState) {
+  const drawing = readDrawingXml(sheetNode, sheetPath, packageState);
+  if (!drawing) return undefined;
+  const drawingDoc = parseXml(drawing.drawingXml);
+  let maxRow = 0;
+  let maxColumn = 0;
+  childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor').forEach((anchorNode) => {
+    const to = readAnchorPoint(childByLocalName(anchorNode, 'to'));
+    maxRow = Math.max(maxRow, to.row);
+    maxColumn = Math.max(maxColumn, to.column);
+  });
+  return maxRow || maxColumn ? { maxRow, maxColumn } : undefined;
+}
+
 function readSheetCharts(
   sheetNode: Element,
   sheetPath: string,
   packageState: XlsxPackageState,
   columns: XlsxColumn[],
   rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
 ) {
-  const drawing = descendantByLocalName(sheetNode, 'drawing');
-  const drawingRelId = attr(drawing, 'r:id') ?? attr(drawing, 'id');
-  if (!drawingRelId) return [];
+  const drawing = readDrawingXml(sheetNode, sheetPath, packageState);
+  if (!drawing) return [];
 
-  const sheetRelPath = sheetPath.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/').concat('.rels');
-  const drawingPath = packageState.relationships[sheetRelPath]?.[drawingRelId]?.target;
-  if (!drawingPath) return [];
-
-  const drawingXml = readXml(packageState.entries, drawingPath);
-  if (!drawingXml) return [];
-
-  const drawingRelPath = drawingPath.replace(/^xl\/drawings\//, 'xl/drawings/_rels/').concat('.rels');
+  const drawingRelPath = drawing.drawingPath.replace(/^xl\/drawings\//, 'xl/drawings/_rels/').concat('.rels');
   const drawingRels = packageState.relationships[drawingRelPath] ?? {};
-  const drawingDoc = parseXml(drawingXml);
+  const drawingDoc = parseXml(drawing.drawingXml);
 
   return childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor')
     .map((anchorNode, index): XlsxChart | undefined => {
@@ -341,13 +486,13 @@ function readSheetCharts(
 
       const startPoint = readAnchorPoint(childByLocalName(anchorNode, 'from'));
       const endPoint = readAnchorPoint(childByLocalName(anchorNode, 'to'));
-      const start = anchorPosition(startPoint, columns, rowHeights);
-      const end = anchorPosition(endPoint, columns, rowHeights);
+      const start = anchorPosition(startPoint, columns, rowHeights, metrics);
+      const end = anchorPosition(endPoint, columns, rowHeights, metrics);
       const chart = parseOfficeChartXml(xml, packageState.theme);
       const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
 
       return {
-        id: `${drawingPath}-chart-${index + 1}`,
+        id: `${drawing.drawingPath}-chart-${index + 1}`,
         title: name,
         chart,
         from: startPoint,
@@ -367,21 +512,14 @@ function readSheetImages(
   packageState: XlsxPackageState,
   columns: XlsxColumn[],
   rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
 ) {
-  const drawing = descendantByLocalName(sheetNode, 'drawing');
-  const drawingRelId = attr(drawing, 'r:id') ?? attr(drawing, 'id');
-  if (!drawingRelId) return [];
+  const drawing = readDrawingXml(sheetNode, sheetPath, packageState);
+  if (!drawing) return [];
 
-  const sheetRelPath = sheetPath.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/').concat('.rels');
-  const drawingPath = packageState.relationships[sheetRelPath]?.[drawingRelId]?.target;
-  if (!drawingPath) return [];
-
-  const drawingXml = readXml(packageState.entries, drawingPath);
-  if (!drawingXml) return [];
-
-  const drawingRelPath = drawingPath.replace(/^xl\/drawings\//, 'xl/drawings/_rels/').concat('.rels');
+  const drawingRelPath = drawing.drawingPath.replace(/^xl\/drawings\//, 'xl/drawings/_rels/').concat('.rels');
   const drawingRels = packageState.relationships[drawingRelPath] ?? {};
-  const drawingDoc = parseXml(drawingXml);
+  const drawingDoc = parseXml(drawing.drawingXml);
 
   return childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor')
     .map((anchorNode, index): XlsxImage | undefined => {
@@ -393,12 +531,12 @@ function readSheetImages(
       const src = resolveMediaRef(target, packageState);
       if (!src) return undefined;
 
-      const start = anchorPosition(from, columns, rowHeights);
-      const end = anchorPosition(to, columns, rowHeights);
+      const start = anchorPosition(from, columns, rowHeights, metrics);
+      const end = anchorPosition(to, columns, rowHeights, metrics);
       const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
 
       return {
-        id: `${drawingPath}-${index + 1}`,
+        id: `${drawing.drawingPath}-${index + 1}`,
         name,
         alt: name,
         src,
@@ -497,6 +635,7 @@ function readSheet(
   const sheetNode = doc.documentElement;
   const range = attr(childByLocalName(sheetNode, 'dimension'), 'ref');
   const parsedRange = parseRange(range);
+  const metrics = readSheetMetrics(sheetNode);
   const cells = new Map<string, XlsxCell>();
   let maxRow = parsedRange?.endRow ?? 0;
   let maxColumn = parsedRange?.endColumn ?? 0;
@@ -521,26 +660,37 @@ function readSheet(
     maxColumn = Math.max(maxColumn, address.column);
   });
 
+  const merges = readMerges(sheetNode);
+  merges.forEach((merge) => {
+    maxRow = Math.max(maxRow, merge.endRow);
+    maxColumn = Math.max(maxColumn, merge.endColumn);
+  });
+
+  const drawingBounds = readDrawingBounds(sheetNode, sheetInfo.path, packageState);
+  if (drawingBounds) {
+    maxRow = Math.max(maxRow, drawingBounds.maxRow);
+    maxColumn = Math.max(maxColumn, drawingBounds.maxColumn);
+  }
+
   maxRow = Math.min(Math.max(maxRow, 1), MAX_RENDERED_EMPTY_ROWS);
   maxColumn = Math.min(Math.max(maxColumn, 1), MAX_RENDERED_EMPTY_COLUMNS);
 
-  const merges = readMerges(sheetNode);
   applyMerges(cells, merges);
 
   const rowHeights = new Map<number, number>();
   descendantsByLocalName(sheetNode, 'row').forEach((rowNode) => {
     const rowIndex = Number(attr(rowNode, 'r') ?? 0);
     if (rowIndex) {
-      rowHeights.set(rowIndex, pointToPx(Number(attr(rowNode, 'ht'))));
+      rowHeights.set(rowIndex, pointToPx(Number(attr(rowNode, 'ht')), metrics.defaultRowHeight));
     }
   });
-  const columns = readColumns(sheetNode, maxColumn);
+  const columns = readColumns(sheetNode, maxColumn, metrics);
 
   const rows: XlsxRow[] = Array.from({ length: maxRow }, (_, rowOffset) => {
     const rowIndex = rowOffset + 1;
     return {
       index: rowIndex,
-      height: rowHeights.get(rowIndex) ?? DEFAULT_ROW_HEIGHT,
+      height: rowHeights.get(rowIndex) ?? metrics.defaultRowHeight,
       cells: Array.from({ length: maxColumn }, (_, columnOffset) => {
         const columnIndex = columnOffset + 1;
         const ref = `${columnIndexToLabel(columnIndex)}${rowIndex}`;
@@ -562,8 +712,8 @@ function readSheet(
     columns,
     rows,
     merges,
-    images: readSheetImages(sheetNode, sheetInfo.path, packageState, columns, rowHeights),
-    charts: readSheetCharts(sheetNode, sheetInfo.path, packageState, columns, rowHeights),
+    images: readSheetImages(sheetNode, sheetInfo.path, packageState, columns, rowHeights, metrics),
+    charts: readSheetCharts(sheetNode, sheetInfo.path, packageState, columns, rowHeights, metrics),
   };
 }
 
@@ -573,7 +723,7 @@ export async function parseXlsx(file: File): Promise<XlsxWorkbook> {
   const workbookXml = readXml(entries, 'xl/workbook.xml');
   const workbookRels = packageState.relationships['xl/_rels/workbook.xml.rels'] ?? {};
   const sharedStrings = readSharedStrings(readXml(entries, 'xl/sharedStrings.xml'));
-  const styleBook = parseStyles(readXml(entries, 'xl/styles.xml'));
+  const styleBook = parseStyles(readXml(entries, 'xl/styles.xml'), packageState.theme);
   const workbookDoc = parseXml(workbookXml);
   const sheets = childrenByLocalName(
     childByLocalName(workbookDoc.documentElement, 'sheets'),

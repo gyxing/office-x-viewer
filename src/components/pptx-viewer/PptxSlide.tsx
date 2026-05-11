@@ -86,8 +86,10 @@ export function PptxSlide({ slide, zoom }: PptxSlideProps) {
               return <TableRenderer key={element.id} element={element} />;
             case 'chart':
               return <ChartFrame key={element.id} element={element} zoom={zoom} />;
-            default:
+            case 'unsupported':
               return <UnsupportedRenderer key={element.id} element={element} />;
+            default:
+              return null;
           }
         })}
       </div>

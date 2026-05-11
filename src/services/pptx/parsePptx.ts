@@ -7,6 +7,7 @@ import {
   childrenByLocalName,
   descendantByLocalName,
   descendantsByLocalName,
+  matchesLocalName,
   parseXml,
   textContent,
 } from '../office/xml';
@@ -17,6 +18,7 @@ import { readRelationships } from '../office/relationships';
 import { parseOfficeChartXml } from '../office/charts';
 import type {
   ChartElement,
+  GradientFill,
   ImageCrop,
   ImageElement,
   PptxDocument,
@@ -42,6 +44,34 @@ type PackageState = {
   mediaByName: Record<string, string>;
   mediaByPath: Record<string, string>;
 };
+
+type TableStyleVariantName =
+  | 'wholeTbl'
+  | 'band1H'
+  | 'band2H'
+  | 'band1V'
+  | 'band2V'
+  | 'firstRow'
+  | 'lastRow'
+  | 'firstCol'
+  | 'lastCol';
+
+type TableCellStyle = {
+  text?: TextStyle;
+  backgroundColor?: string | null;
+  backgroundOpacity?: number;
+  borderColor?: string | null;
+  borderOpacity?: number;
+  borderWidth?: number;
+};
+
+type TableStyleDefinition = {
+  styleId: string;
+  styleName?: string;
+  variants: Partial<Record<TableStyleVariantName, TableCellStyle>>;
+};
+
+type TableStyleMap = Record<string, TableStyleDefinition>;
 
 type LayoutDefinition = {
   path: string;
@@ -100,7 +130,7 @@ function buildPackageState(entries: OfficeEntryMap): PackageState {
   return { entries, relationships, mediaByName: media.byName, mediaByPath: media.byPath };
 }
 
-export function debugPptxPackage(entries: EntryMap) {
+export function debugPptxPackage(entries: OfficeEntryMap) {
   const packageState = buildPackageState(entries);
   return {
     relsCount: Object.keys(packageState.relationships).length,
@@ -190,6 +220,10 @@ function pctToRatio(value?: string) {
   const next = Number(value);
   if (!Number.isFinite(next)) return undefined;
   return next / 100000;
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
 }
 
 function boolAttr(node: Element | null, name: string) {
@@ -398,23 +432,155 @@ function readTextPresetMap(txStyles: Element | null, theme: ThemeModel) {
   return presets;
 }
 
+function readTableCellStyle(node: Element | null, theme: ThemeModel): TableCellStyle {
+  if (!node) return {};
+  const tcStyle = childByLocalName(node, 'tcStyle') ?? node;
+  const tcTxStyle = childByLocalName(node, 'tcTxStyle') ?? node;
+  const fillNode = childByLocalName(tcStyle, 'fill');
+  const solidFill = childByLocalName(fillNode, 'solidFill');
+  const noFill = Boolean(childByLocalName(fillNode, 'noFill'));
+  const borderNode = childByLocalName(tcStyle, 'tcBdr');
+  const borderLine =
+    childByLocalName(borderNode, 'ln') ??
+    childByLocalName(borderNode, 'left')?.firstElementChild ??
+    childByLocalName(borderNode, 'right')?.firstElementChild ??
+    childByLocalName(borderNode, 'top')?.firstElementChild ??
+    childByLocalName(borderNode, 'bottom')?.firstElementChild ??
+    childByLocalName(borderNode, 'insideH')?.firstElementChild ??
+    childByLocalName(borderNode, 'insideV')?.firstElementChild;
+  const fill = noFill || !solidFill ? undefined : parseColorNode(solidFill, theme);
+  const borderFill = childByLocalName(borderLine, 'solidFill');
+  const textColorNode =
+    childByLocalName(tcTxStyle, 'solidFill') ??
+    childByLocalName(tcTxStyle, 'srgbClr') ??
+    childByLocalName(tcTxStyle, 'schemeClr') ??
+    childByLocalName(tcTxStyle, 'prstClr');
+  return {
+    text: mergeTextStyles(readDefaultRunStyle(tcTxStyle, theme), {
+      color: parseColorNode(textColorNode, theme),
+      opacity: parseAlphaNode(textColorNode),
+    }),
+    backgroundColor: fill,
+    backgroundOpacity: parseAlphaNode(solidFill),
+    borderColor: childByLocalName(borderLine, 'noFill') ? null : parseColorNode(borderFill ?? borderLine, theme),
+    borderOpacity: parseAlphaNode(borderFill ?? borderLine),
+    borderWidth: attr(borderLine, 'w') ? Number(attr(borderLine, 'w')) / 12700 : undefined,
+  };
+}
+
+function readTableStyles(xml: string, theme: ThemeModel): TableStyleMap {
+  if (!xml) return {};
+  const doc = parseXml(xml);
+  const result: TableStyleMap = {};
+  descendantsByLocalName(doc.documentElement, 'tblStyle').forEach((styleNode) => {
+    const styleId = attr(styleNode, 'styleId');
+    if (!styleId) return;
+    const variants: Partial<Record<TableStyleVariantName, TableCellStyle>> = {};
+    ([
+      'wholeTbl',
+      'band1H',
+      'band2H',
+      'band1V',
+      'band2V',
+      'firstRow',
+      'lastRow',
+      'firstCol',
+      'lastCol',
+    ] as TableStyleVariantName[]).forEach((variantName) => {
+      const variantNode = childByLocalName(styleNode, variantName);
+      if (!variantNode) return;
+      variants[variantName] = readTableCellStyle(variantNode, theme);
+    });
+    result[styleId] = {
+      styleId,
+      styleName: attr(styleNode, 'styleName') ?? undefined,
+      variants,
+    };
+  });
+  return result;
+}
+
+function mergeTableCellStyle(...styles: Array<TableCellStyle | undefined>) {
+  return styles.reduce<TableCellStyle>((acc, style) => {
+    if (!style) return acc;
+    return {
+      text: mergeTextStyles(acc.text, style.text),
+      backgroundColor: style.backgroundColor !== undefined ? style.backgroundColor : acc.backgroundColor,
+      backgroundOpacity: style.backgroundOpacity !== undefined ? style.backgroundOpacity : acc.backgroundOpacity,
+      borderColor: style.borderColor !== undefined ? style.borderColor : acc.borderColor,
+      borderOpacity: style.borderOpacity !== undefined ? style.borderOpacity : acc.borderOpacity,
+      borderWidth: style.borderWidth !== undefined ? style.borderWidth : acc.borderWidth,
+    };
+  }, {});
+}
+
+function readCustomGeometry(spPr: Element | null) {
+  const custGeom = childByLocalName(spPr, 'custGeom');
+  if (!custGeom) return {};
+
+  const paths = descendantsByLocalName(custGeom, 'path');
+  const pathData: string[] = [];
+  let viewBox: string | undefined;
+
+  paths.forEach((pathNode) => {
+    const width = attr(pathNode, 'w');
+    const height = attr(pathNode, 'h');
+    if (!viewBox && width && height) {
+      viewBox = `0 0 ${width} ${height}`;
+    }
+
+    const commands: string[] = [];
+    Array.from(pathNode.children).forEach((child) => {
+      if (matchesLocalName(child, 'close')) {
+        commands.push('Z');
+        return;
+      }
+
+      const points = descendantsByLocalName(child, 'pt').map((point) => {
+        const x = Number(attr(point, 'x') ?? Number.NaN);
+        const y = Number(attr(point, 'y') ?? Number.NaN);
+        return Number.isFinite(x) && Number.isFinite(y) ? `${x} ${y}` : undefined;
+      });
+
+      if (matchesLocalName(child, 'moveTo') && points[0]) {
+        commands.push(`M ${points[0]}`);
+      }
+      if (matchesLocalName(child, 'lnTo') && points[0]) {
+        commands.push(`L ${points[0]}`);
+      }
+      if (matchesLocalName(child, 'cubicBezTo') && points.length >= 3 && points.every(Boolean)) {
+        commands.push(`C ${points.join(' ')}`);
+      }
+    });
+
+    if (commands.length) {
+      pathData.push(commands.join(' '));
+    }
+  });
+
+  return {
+    path: pathData.length ? pathData.join(' ') : undefined,
+    viewBox,
+  };
+}
+
 function readShapeVisualStyle(spPr: Element | null, theme: ThemeModel) {
   const xfrm = childByLocalName(spPr, 'xfrm');
-  const solidFill = childByLocalName(spPr, 'solidFill');
   const noFill = Boolean(childByLocalName(spPr, 'noFill'));
   const line = childByLocalName(spPr, 'ln');
-  const shape = attr(childByLocalName(spPr, 'prstGeom'), 'prst') ?? 'rect';
+  const customGeometry = readCustomGeometry(spPr);
+  const shape = customGeometry.path ? 'path' : attr(childByLocalName(spPr, 'prstGeom'), 'prst') ?? 'rect';
   const fillNode = childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill') ?? childByLocalName(spPr, 'pattFill');
-  const fill = noFill || !fillNode ? null : parseColorNode(fillNode, theme);
+  const fill = noFill || !fillNode ? null : parsePaintNode(fillNode, theme);
   const strokeNone = !line || Boolean(childByLocalName(line, 'noFill'));
-  const strokeNode = childByLocalName(line, 'solidFill');
+  const strokeNode = childByLocalName(line, 'solidFill') ?? childByLocalName(line, 'gradFill') ?? childByLocalName(line, 'pattFill');
   const stroke = strokeNone || !strokeNode ? null : parseColorNode(strokeNode ?? line, theme);
   const shadow = parseShadowNode(childByLocalName(spPr, 'effectLst') ?? childByLocalName(spPr, 'effectDag'), theme);
 
   return {
     shape,
     fill,
-    fillOpacity: parseAlphaNode(solidFill),
+    fillOpacity: typeof fill === 'string' ? parseAlphaNode(fillNode) : undefined,
     stroke,
     strokeOpacity: parseAlphaNode(strokeNode ?? line),
     strokeWidth: attr(line, 'w') ? Number(attr(line, 'w')) / 12700 : undefined,
@@ -424,6 +590,8 @@ function readShapeVisualStyle(spPr: Element | null, theme: ThemeModel) {
     flipH: attr(xfrm, 'flipH') === '1',
     flipV: attr(xfrm, 'flipV') === '1',
     borderRadius: readBorderRadius(spPr),
+    path: customGeometry.path,
+    viewBox: customGeometry.viewBox,
   };
 }
 
@@ -438,12 +606,71 @@ function readBorderRadius(spPr: Element | null) {
   return ratio;
 }
 
+function colorWithOpacity(color: string, opacity?: number) {
+  if (opacity === undefined || opacity >= 1) return color;
+  const normalized = color.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return color;
+  const value = Number.parseInt(normalized, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+function readGradientFill(node: Element | null, theme: ThemeModel): GradientFill | undefined {
+  if (!node || !matchesLocalName(node, 'gradFill')) return undefined;
+
+  const stops = childrenByLocalName(childByLocalName(node, 'gsLst'), 'gs')
+    .map((stop) => {
+      const colorNode =
+        childByLocalName(stop, 'srgbClr') ??
+        childByLocalName(stop, 'schemeClr') ??
+        childByLocalName(stop, 'sysClr') ??
+        childByLocalName(stop, 'prstClr');
+      const color = parseColorNode(colorNode, theme);
+      if (!color) return undefined;
+      return {
+        offset: clamp01(Number(attr(stop, 'pos') ?? 0) / 100000),
+        color: colorWithOpacity(color, parseAlphaNode(colorNode)),
+      };
+    })
+    .filter((stop): stop is { offset: number; color: string } => Boolean(stop))
+    .sort((a, b) => a.offset - b.offset);
+
+  if (!stops.length) return undefined;
+
+  return {
+    type: 'linear',
+    angle: Number(attr(childByLocalName(node, 'lin'), 'ang') ?? 0) / 60000,
+    stops,
+  };
+}
+
+function pickGradientColorNode(node: Element | null) {
+  if (!node || !matchesLocalName(node, 'gradFill')) return node;
+  const stops = descendantsByLocalName(node, 'gs');
+  for (let index = stops.length - 1; index >= 0; index -= 1) {
+    const colorNode =
+      childByLocalName(stops[index], 'srgbClr') ??
+      childByLocalName(stops[index], 'schemeClr') ??
+      childByLocalName(stops[index], 'sysClr') ??
+      childByLocalName(stops[index], 'prstClr');
+    if (colorNode) return colorNode;
+  }
+  return node;
+}
+
+function parsePaintNode(node: Element | null, theme: ThemeModel) {
+  return readGradientFill(node, theme) ?? parseColorNode(node, theme);
+}
+
 function parseColorNode(node: Element | null, theme: ThemeModel) {
-  if (!node) return undefined;
-  const srgb = node.localName === 'srgbClr' ? node : childByLocalName(node, 'srgbClr');
-  const scheme = node.localName === 'schemeClr' ? node : childByLocalName(node, 'schemeClr');
-  const sys = node.localName === 'sysClr' ? node : childByLocalName(node, 'sysClr');
-  const prst = node.localName === 'prstClr' ? node : childByLocalName(node, 'prstClr');
+  const sourceNode = pickGradientColorNode(node);
+  if (!sourceNode) return undefined;
+  const srgb = matchesLocalName(sourceNode, 'srgbClr') ? sourceNode : childByLocalName(sourceNode, 'srgbClr');
+  const scheme = matchesLocalName(sourceNode, 'schemeClr') ? sourceNode : childByLocalName(sourceNode, 'schemeClr');
+  const sys = matchesLocalName(sourceNode, 'sysClr') ? sourceNode : childByLocalName(sourceNode, 'sysClr');
+  const prst = matchesLocalName(sourceNode, 'prstClr') ? sourceNode : childByLocalName(sourceNode, 'prstClr');
   const colorNode = srgb ?? scheme ?? sys ?? prst;
   const base =
     attr(srgb, 'val') ??
@@ -460,7 +687,7 @@ function parseColorNode(node: Element | null, theme: ThemeModel) {
 }
 
 function parseAlphaNode(node: Element | null) {
-  return alphaToOpacity(attr(descendantByLocalName(node, 'alpha'), 'val'));
+  return alphaToOpacity(attr(descendantByLocalName(pickGradientColorNode(node), 'alpha'), 'val'));
 }
 
 function parseRatioNode(node: Element | null) {
@@ -601,6 +828,8 @@ function parseGroupElement(
   rels: Record<string, string>,
   sourcePrefix: string,
   placeholderStyles?: Record<string, PlaceholderStyle>,
+  tableStyles?: TableStyleMap,
+  includePlaceholders = true,
 ) {
   const spPr = childByLocalName(node, 'grpSpPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -613,7 +842,16 @@ function parseGroupElement(
   const width = emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? 0;
   const height = emuValue(childByLocalName(xfrm, 'ext'), 'cy') ?? 0;
   const inner = childByLocalName(node, 'spTree') ?? node;
-  const childElements = parseVisualTree(inner, theme, packageState, rels, `${sourcePrefix}-group-${index}`, placeholderStyles);
+  const childElements = parseVisualTree(
+    inner,
+    theme,
+    packageState,
+    rels,
+    `${sourcePrefix}-group-${index}`,
+    placeholderStyles,
+    tableStyles,
+    includePlaceholders,
+  );
   return childElements.map((element) => {
     const translated = transformGroupedElement(element, {
       x: offsetX,
@@ -640,11 +878,14 @@ function parseVisualTree(
   rels: Record<string, string>,
   sourcePrefix: string,
   placeholderStyles?: Record<string, PlaceholderStyle>,
+  tableStyles?: TableStyleMap,
+  includePlaceholders = true,
 ) {
   const elements: SlideElement[] = [];
   const nodes = childrenByLocalName(spTree, 'sp')
     .concat(childrenByLocalName(spTree, 'pic'))
     .concat(childrenByLocalName(spTree, 'graphicFrame'))
+    .concat(childrenByLocalName(spTree, 'cxnSp'))
     .concat(childrenByLocalName(spTree, 'grpSp'))
     .sort((a, b) => Array.from(spTree?.children ?? []).indexOf(a) - Array.from(spTree?.children ?? []).indexOf(b));
 
@@ -658,20 +899,33 @@ function parseVisualTree(
 
     if (node.localName === 'graphicFrame') {
       const chart = parseChartElement(node, elementIndex, theme, packageState, rels);
-      const tbl = childByLocalName(node, 'tbl');
-      const element = chart ?? (tbl ? parseTableElement(node, elementIndex) : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
+      const tbl = descendantByLocalName(node, 'tbl');
+      const element = chart ?? (tbl ? parseTableElement(node, elementIndex, theme, tableStyles) : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
       element.id = `${sourcePrefix}-${element.id}`;
       elements.push(element);
       return;
     }
 
     if (node.localName === 'grpSp') {
-      const groupElements = parseGroupElement(node, elementIndex, theme, packageState, rels, sourcePrefix, placeholderStyles);
+      const groupElements = parseGroupElement(
+        node,
+        elementIndex,
+        theme,
+        packageState,
+        rels,
+        sourcePrefix,
+        placeholderStyles,
+        tableStyles,
+        includePlaceholders,
+      );
       elements.push(...groupElements);
       return;
     }
 
     const ph = descendantByLocalName(node, 'ph');
+    if (ph && !includePlaceholders) {
+      return;
+    }
     const inherited = ph ? resolvePlaceholderStyle(ph, placeholderStyles) : undefined;
     const hasText = Boolean(node.querySelector('txBody'));
     const visualNode = childByLocalName(node, 'spPr');
@@ -697,7 +951,14 @@ function parseVisualTree(
   return elements;
 }
 
-function readMaster(xml: string, theme: ThemeModel, relPath: string, packageState: PackageState, rels: Record<string, string>): MasterDefinition {
+function readMaster(
+  xml: string,
+  theme: ThemeModel,
+  relPath: string,
+  packageState: PackageState,
+  rels: Record<string, string>,
+  tableStyles?: TableStyleMap,
+): MasterDefinition {
   const doc = parseXml(xml);
   const cSld = childByLocalName(doc.documentElement, 'cSld');
   const bg = childByLocalName(cSld, 'bg');
@@ -711,11 +972,28 @@ function readMaster(xml: string, theme: ThemeModel, relPath: string, packageStat
     placeholders[key] = style;
   });
   const textPresets = readTextPresetMap(childByLocalName(doc.documentElement, 'txStyles'), theme);
-  const elements = parseVisualTree(childByLocalName(cSld, 'spTree'), theme, packageState, rels, `master-${relPath}`);
+  const elements = parseVisualTree(
+    childByLocalName(cSld, 'spTree'),
+    theme,
+    packageState,
+    rels,
+    `master-${relPath}`,
+    undefined,
+    tableStyles,
+    false,
+  );
   return { path: relPath, placeholders, textPresets, background, elements };
 }
 
-function readLayout(xml: string, theme: ThemeModel, relPath: string, masterPath: string, packageState: PackageState, rels: Record<string, string>): LayoutDefinition {
+function readLayout(
+  xml: string,
+  theme: ThemeModel,
+  relPath: string,
+  masterPath: string,
+  packageState: PackageState,
+  rels: Record<string, string>,
+  tableStyles?: TableStyleMap,
+): LayoutDefinition {
   const doc = parseXml(xml);
   const cSld = childByLocalName(doc.documentElement, 'cSld');
   const bg = childByLocalName(cSld, 'bg');
@@ -729,11 +1007,20 @@ function readLayout(xml: string, theme: ThemeModel, relPath: string, masterPath:
     placeholders[key] = style;
   });
   const textPresets = readTextPresetMap(childByLocalName(doc.documentElement, 'txStyles'), theme);
-  const elements = parseVisualTree(childByLocalName(cSld, 'spTree'), theme, packageState, rels, `layout-${relPath}`);
+  const elements = parseVisualTree(
+    childByLocalName(cSld, 'spTree'),
+    theme,
+    packageState,
+    rels,
+    `layout-${relPath}`,
+    undefined,
+    tableStyles,
+    false,
+  );
   return { path: relPath, masterPath, placeholders, textPresets, background, elements };
 }
 
-function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageState, theme: ThemeModel) {
+function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageState, theme: ThemeModel, tableStyles?: TableStyleMap) {
   const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
   const masterDefinitions: MasterDefinition[] = [];
   const masterLayoutDefinitions: Record<string, LayoutDefinition[]> = {};
@@ -743,7 +1030,7 @@ function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageS
     const xmlPath = target.startsWith('ppt/') ? target : `ppt/${target}`;
     const relPath = xmlPath.replace(/^ppt\/slideMasters\//, 'ppt/slideMasters/_rels/').replace(/\.xml$/, '.xml.rels');
     const masterRels = packageState.relationships[relPath] ?? {};
-    const master = readMaster(readXml(entries, xmlPath), theme, xmlPath, packageState, masterRels);
+    const master = readMaster(readXml(entries, xmlPath), theme, xmlPath, packageState, masterRels, tableStyles);
     masterDefinitions.push(master);
     masterLayoutDefinitions[xmlPath] = Object.values(masterRels)
       .filter((item) => item.includes('slideLayouts/'))
@@ -757,6 +1044,7 @@ function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageS
           xmlPath,
           packageState,
           packageState.relationships[layoutRelPath] ?? {},
+          tableStyles,
         );
       });
   });
@@ -857,6 +1145,8 @@ function parseTextElement(node: Element, index: number, theme: ThemeModel, inher
     placeholderIdx: inherited?.idx,
     paragraphs,
     shape: visual.shape,
+    path: visual.path,
+    viewBox: visual.viewBox,
     fill: visual.fill !== undefined ? visual.fill : inherited?.fill,
     fillOpacity: visual.fillOpacity ?? inherited?.fillOpacity,
     stroke: visual.stroke !== undefined ? visual.stroke : inherited?.stroke,
@@ -896,6 +1186,8 @@ function parseShapeElement(node: Element, index: number, theme: ThemeModel, inhe
     id: `shape-${index}`,
     type: 'shape',
     shape: visual.shape,
+    path: visual.path,
+    viewBox: visual.viewBox,
     x: emuValue(childByLocalName(xfrm, 'off'), 'x') ?? inherited?.x ?? 0,
     y: emuValue(childByLocalName(xfrm, 'off'), 'y') ?? inherited?.y ?? 0,
     width: emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? inherited?.width ?? 0,
@@ -988,24 +1280,181 @@ function parseChartElement(
   };
 }
 
-function parseTableElement(node: Element, index: number): TableElement {
-  const xfrm = childByLocalName(childByLocalName(node, 'xfrm'), 'off');
-  const ext = childByLocalName(childByLocalName(node, 'xfrm'), 'ext');
-  const tbl = childByLocalName(node, 'tbl');
-  const rows = childrenByLocalName(tbl, 'tr').map((rowNode) =>
-    childrenByLocalName(rowNode, 'tc').map((cellNode) => ({
-      text: cellNode.textContent ?? '',
-      style: undefined,
-    })),
+function parseTableCellText(cellNode: Element, theme: ThemeModel) {
+  const txBody = childByLocalName(cellNode, 'txBody');
+  const paragraphs = childrenByLocalName(txBody, 'p').map((paragraphNode) => {
+    const paragraphProps = childByLocalName(paragraphNode, 'pPr');
+    const paragraphStyle = readParagraphLevelStyle(paragraphProps, theme);
+    const defaultRunStyle = mergeTextStyles(
+      readDefaultRunStyle(childByLocalName(paragraphProps, 'defRPr'), theme),
+      readDefaultRunStyle(childByLocalName(paragraphNode, 'endParaRPr'), theme),
+    );
+    const runs: TextRun[] = [];
+
+    Array.from(paragraphNode.children).forEach((child) => {
+      if (child.localName === 'r' || child.localName === 'fld') {
+        const runProps = childByLocalName(child, 'rPr');
+        runs.push({
+          text: textContent(childByLocalName(child, 't')) || child.textContent || '',
+          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
+        });
+        return;
+      }
+
+      if (child.localName === 'br') {
+        const runProps = childByLocalName(child, 'rPr');
+        runs.push({
+          text: '\n',
+          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
+        });
+      }
+    });
+
+    if (!runs.length && paragraphNode.textContent) {
+      runs.push({ text: paragraphNode.textContent, style: defaultRunStyle });
+    }
+
+    return {
+      runs,
+      style: paragraphStyle,
+      bullet: paragraphStyle.bullet,
+    };
+  });
+
+  const text = paragraphs
+    .map((paragraph) => paragraph.runs.map((run) => run.text).join(''))
+    .join('\n');
+  const firstRunStyle = paragraphs.flatMap((paragraph) => paragraph.runs).find(Boolean)?.style;
+
+  return { text, paragraphs, firstRunStyle };
+}
+
+function parseTableBorder(tcPr: Element | null, theme: ThemeModel) {
+  const line =
+    childByLocalName(tcPr, 'ln') ??
+    childByLocalName(tcPr, 'lnL') ??
+    childByLocalName(tcPr, 'lnR') ??
+    childByLocalName(tcPr, 'lnT') ??
+    childByLocalName(tcPr, 'lnB');
+  if (!line) return {};
+  if (childByLocalName(line, 'noFill')) {
+    return {
+      borderColor: null,
+    };
+  }
+  const fill = childByLocalName(line, 'solidFill') ?? line;
+  return {
+    borderColor: parseColorNode(fill, theme),
+    borderOpacity: parseAlphaNode(fill),
+    borderWidth: attr(line, 'w') ? Number(attr(line, 'w')) / 12700 : undefined,
+  };
+}
+
+function tableFlag(node: Element | null, name: string) {
+  return attr(node, name) === '1' || attr(node, name) === 'true';
+}
+
+function resolveTableCellStyle(
+  style: TableStyleDefinition | undefined,
+  tblPr: Element | null,
+  rowIndex: number,
+  columnIndex: number,
+  rowCount: number,
+  columnCount: number,
+) {
+  if (!style) return {};
+  const isFirstRow = tableFlag(tblPr, 'firstRow') && rowIndex === 0;
+  const isLastRow = tableFlag(tblPr, 'lastRow') && rowIndex === rowCount - 1;
+  const isFirstCol = tableFlag(tblPr, 'firstCol') && columnIndex === 0;
+  const isLastCol = tableFlag(tblPr, 'lastCol') && columnIndex === columnCount - 1;
+  const bandRowOffset = tableFlag(tblPr, 'firstRow') ? 1 : 0;
+  const bandColOffset = tableFlag(tblPr, 'firstCol') ? 1 : 0;
+  const rowBand =
+    tableFlag(tblPr, 'bandRow') && !isFirstRow && !isLastRow
+      ? (rowIndex - bandRowOffset) % 2 === 0
+        ? style.variants.band1H
+        : style.variants.band2H
+      : undefined;
+  const colBand =
+    tableFlag(tblPr, 'bandCol') && !isFirstCol && !isLastCol
+      ? (columnIndex - bandColOffset) % 2 === 0
+        ? style.variants.band1V
+        : style.variants.band2V
+      : undefined;
+
+  return mergeTableCellStyle(
+    style.variants.wholeTbl,
+    rowBand,
+    colBand,
+    isFirstRow ? style.variants.firstRow : undefined,
+    isLastRow ? style.variants.lastRow : undefined,
+    isFirstCol ? style.variants.firstCol : undefined,
+    isLastCol ? style.variants.lastCol : undefined,
+  );
+}
+
+function parseTableElement(node: Element, index: number, theme: ThemeModel, tableStyles?: TableStyleMap): TableElement {
+  const xfrm = childByLocalName(node, 'xfrm');
+  const off = childByLocalName(xfrm, 'off');
+  const ext = childByLocalName(xfrm, 'ext');
+  const tbl = descendantByLocalName(node, 'tbl');
+  const tblPr = childByLocalName(tbl, 'tblPr');
+  const styleId = textContent(childByLocalName(tblPr, 'tableStyleId')).trim();
+  const tableStyle = styleId ? tableStyles?.[styleId] : undefined;
+  const columnWidths = childrenByLocalName(childByLocalName(tbl, 'tblGrid'), 'gridCol')
+    .map((col) => emuValue(col, 'w') ?? 0);
+  const rowNodes = childrenByLocalName(tbl, 'tr');
+  const rowHeights = rowNodes.map((rowNode) => emuValue(rowNode, 'h') ?? 0);
+  const rows = rowNodes.map((rowNode, rowIndex) =>
+    childrenByLocalName(rowNode, 'tc').map((cellNode, columnIndex) => {
+      const tcPr = childByLocalName(cellNode, 'tcPr');
+      const fillNode = childByLocalName(tcPr, 'solidFill') ?? childByLocalName(tcPr, 'gradFill');
+      const { text, paragraphs, firstRunStyle } = parseTableCellText(cellNode, theme);
+      const explicitBorder = parseTableBorder(tcPr, theme);
+      const styled = resolveTableCellStyle(
+        tableStyle,
+        tblPr,
+        rowIndex,
+        columnIndex,
+        rowNodes.length,
+        columnWidths.length,
+      );
+      const explicitBackgroundColor = childByLocalName(tcPr, 'noFill') ? null : parseColorNode(fillNode, theme);
+      const explicitBackgroundOpacity = childByLocalName(tcPr, 'noFill') ? undefined : parseAlphaNode(fillNode);
+      return {
+        text,
+        paragraphs,
+        style: mergeTextStyles(styled.text, firstRunStyle),
+        backgroundColor: explicitBackgroundColor !== undefined ? explicitBackgroundColor : styled.backgroundColor ?? undefined,
+        backgroundOpacity: explicitBackgroundOpacity !== undefined ? explicitBackgroundOpacity : styled.backgroundOpacity,
+        borderColor: explicitBorder.borderColor !== undefined ? explicitBorder.borderColor : styled.borderColor ?? undefined,
+        borderOpacity: explicitBorder.borderOpacity !== undefined ? explicitBorder.borderOpacity : styled.borderOpacity,
+        borderWidth: explicitBorder.borderWidth !== undefined ? explicitBorder.borderWidth : styled.borderWidth,
+        margins: {
+          left: emuValue(tcPr, 'marL'),
+          right: emuValue(tcPr, 'marR'),
+          top: emuValue(tcPr, 'marT'),
+          bottom: emuValue(tcPr, 'marB'),
+        },
+        verticalAlign:
+          attr(tcPr, 'anchor') === 'b'
+            ? 'bottom'
+            : attr(tcPr, 'anchor') === 'ctr'
+              ? 'middle'
+              : 'top',
+      };
+    }),
   );
 
   return {
     id: `table-${index}`,
     type: 'table',
-    x: emuValue(xfrm, 'x') ?? 0,
-    y: emuValue(xfrm, 'y') ?? 0,
+    x: emuValue(off, 'x') ?? 0,
+    y: emuValue(off, 'y') ?? 0,
     width: emuValue(ext, 'cx') ?? 0,
     height: emuValue(ext, 'cy') ?? 0,
+    columnWidths,
+    rowHeights,
     rows,
   };
 }
@@ -1042,6 +1491,7 @@ function parseSlideXml(
   relPath: string,
   layoutDefinitions: LayoutDefinition[],
   masterDefinitions: MasterDefinition[],
+  tableStyles?: TableStyleMap,
 ): SlideModel {
   const doc = parseXml(xml);
   const slide = doc.documentElement;
@@ -1072,7 +1522,7 @@ function parseSlideXml(
     placeholderStyles[key] = mergePlaceholderStyle(placeholderStyles[key], preset);
   });
 
-  elements.push(...parseVisualTree(spTree, theme, packageState, slideRels, `slide-${index}`, placeholderStyles));
+  elements.push(...parseVisualTree(spTree, theme, packageState, slideRels, `slide-${index}`, placeholderStyles, tableStyles));
 
   return {
     id: `slide-${index}`,
@@ -1091,10 +1541,11 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
   const presentationDoc = parseXml(presentationXml);
   const themeXml = readXml(entries, 'ppt/theme/theme1.xml');
   const theme = themeXml ? readTheme(themeXml) : { colorScheme: {}, fontScheme: {}, colorMap: {} };
+  const tableStyles = readTableStyles(readXml(entries, 'ppt/tableStyles.xml'), theme);
   const size = presentationXml ? readPresentationSize(presentationXml) : { width: 960, height: 540 };
   const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
   const slideIds = childrenByLocalName(presentationDoc.querySelector('sldIdLst, p\\:sldIdLst'), 'sldId');
-  const { masterDefinitions, masterLayoutDefinitions } = readPresentationLayouts(entries, packageState, theme);
+  const { masterDefinitions, masterLayoutDefinitions } = readPresentationLayouts(entries, packageState, theme, tableStyles);
   const layoutDefinitions = Object.values(masterLayoutDefinitions).flat();
   const slides: SlideModel[] = [];
 
@@ -1115,6 +1566,7 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
         relsPath,
         layoutDefinitions,
         masterDefinitions,
+        tableStyles,
       ),
     );
   });

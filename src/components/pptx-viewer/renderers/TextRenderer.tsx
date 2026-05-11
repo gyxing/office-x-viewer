@@ -1,19 +1,10 @@
+import { useId } from 'react';
 import type { TextElement } from '../../../services/pptx/types';
+import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
 
 type TextRendererProps = {
   element: TextElement;
 };
-
-function colorWithOpacity(color?: string, opacity?: number) {
-  if (!color || opacity === undefined || opacity >= 1) return color;
-  const normalized = color.replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return color;
-  const value = Number.parseInt(normalized, 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
 
 function shadowToCss(element: TextElement) {
   if (!element.shadow) return undefined;
@@ -21,6 +12,7 @@ function shadowToCss(element: TextElement) {
 }
 
 function radiusToPx(element: TextElement) {
+  if (element.shape === 'ellipse') return '50%';
   if (element.shape !== 'roundRect') return 0;
   const ratio = element.borderRadius ?? 0.12;
   return Math.min(element.width, element.height) * ratio;
@@ -40,7 +32,12 @@ function lineStyle(dash?: string) {
 }
 
 export function TextRenderer({ element }: TextRendererProps) {
+  const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   const style = element.boxStyle ?? {};
+  const isVectorShape = Boolean(element.path);
+  const fillPaint = element.fill;
+  const isGradientFill = isGradientPaint(fillPaint);
+  const gradientId = isGradientFill ? `${instanceId}-${element.id}-fill-gradient` : undefined;
   return (
     <div
       style={{
@@ -60,8 +57,8 @@ export function TextRenderer({ element }: TextRendererProps) {
         writingMode: style.writingMode,
         whiteSpace: 'pre-wrap',
         lineHeight: style.lineHeight ?? 1.15,
-        background: element.fill ? colorWithOpacity(element.fill, element.fillOpacity) : undefined,
-        border: element.stroke
+        background: isVectorShape ? undefined : paintToCss(element.fill, element.fillOpacity),
+        border: !isVectorShape && element.stroke
           ? `${element.strokeWidth ?? 1}px ${lineStyle(element.strokeDash)} ${colorWithOpacity(element.stroke, element.strokeOpacity)}`
           : undefined,
         borderRadius: radiusToPx(element),
@@ -80,10 +77,47 @@ export function TextRenderer({ element }: TextRendererProps) {
         overflowWrap: 'anywhere',
       }}
     >
+      {isVectorShape ? (
+        <svg
+          viewBox={element.viewBox ?? `0 0 ${Math.max(1, element.width)} ${Math.max(1, element.height)}`}
+          preserveAspectRatio="none"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            overflow: 'visible',
+            zIndex: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          {isGradientFill ? (
+            <defs>
+              <linearGradient id={gradientId} {...gradientToSvgEndpoints(fillPaint.angle)} gradientUnits="objectBoundingBox">
+                {fillPaint.stops.map((stop, index) => (
+                  <stop key={index} offset={`${stop.offset * 100}%`} stopColor={stop.color} />
+                ))}
+              </linearGradient>
+            </defs>
+          ) : null}
+          <path
+            d={element.path ?? ''}
+            fill={isGradientFill ? `url(#${gradientId})` : element.fill ? colorWithOpacity(element.fill as string, element.fillOpacity) ?? 'none' : 'none'}
+            fillOpacity={isGradientFill ? undefined : element.fillOpacity}
+            stroke={element.stroke ? colorWithOpacity(element.stroke, element.strokeOpacity) ?? element.stroke : 'none'}
+            strokeOpacity={element.strokeOpacity}
+            strokeWidth={element.strokeWidth ?? 1}
+            strokeDasharray={element.strokeDash && element.strokeDash !== 'solid' ? element.strokeDash : undefined}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      ) : null}
       {element.paragraphs.map((paragraph, paragraphIndex) => (
         <div
           key={paragraphIndex}
           style={{
+            position: 'relative',
+            zIndex: 1,
             textAlign: paragraph.style?.align ?? style.align ?? 'left',
             lineHeight: paragraph.style?.lineHeight ?? style.lineHeight ?? 1.2,
             marginTop: paragraph.style?.spaceBefore ?? 0,

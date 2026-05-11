@@ -88,9 +88,17 @@ export type XlsxCellStyle = {
   italic?: boolean;
   underline?: boolean;
   color?: string;
+  fontFamily?: string;
+  fontSize?: number;
   backgroundColor?: string;
   horizontalAlign?: 'left' | 'center' | 'right' | 'justify';
   verticalAlign?: 'top' | 'middle' | 'bottom';
   wrapText?: boolean;
   border?: boolean;
+  borderTop?: string;
+  borderRight?: string;
+  borderBottom?: string;
+  borderLeft?: string;
+  borderColor?: string;
+  borderWidth?: number;
 };

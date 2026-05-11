@@ -15,7 +15,7 @@ const EMPTY_TABS: Array<{ key: string; label: string }> = [];
 
 function styleFromCell(cell: XlsxCell): CSSProperties {
   const style = cell.style ?? {};
-  return {
+  const css: CSSProperties = {
     fontWeight: style.bold ? 700 : 400,
     fontStyle: style.italic ? 'italic' : undefined,
     textDecoration: style.underline ? 'underline' : undefined,
@@ -23,9 +23,16 @@ function styleFromCell(cell: XlsxCell): CSSProperties {
     background: style.backgroundColor,
     textAlign: style.horizontalAlign,
     verticalAlign: style.verticalAlign,
-    whiteSpace: style.wrapText ? 'pre-wrap' : 'pre',
-    borderColor: style.border ? '#b9c2d0' : '#d9e0ea',
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    whiteSpace: style.wrapText ? 'pre-wrap' : 'nowrap',
+    overflowWrap: style.wrapText ? 'anywhere' : undefined,
+    wordBreak: style.wrapText ? 'break-word' : undefined,
+    borderColor: style.borderColor ?? (style.border ? '#b9c2d0' : '#d9e0ea'),
+    borderStyle: style.border ? 'solid' : undefined,
+    borderWidth: style.borderWidth ? `${style.borderWidth}px` : undefined,
   };
+  return Object.fromEntries(Object.entries(css).filter(([, value]) => value !== undefined)) as CSSProperties;
 }
 
 function isInstructionCell(style?: XlsxCellStyle) {
@@ -38,7 +45,13 @@ function XlsxSheetGridComponent({ sheet, zoom }: { sheet: XlsxSheet; zoom: numbe
     const tableWidth = 48 + sheet.columns.reduce((sum, column) => sum + column.width, 0);
     const tableHeight = 28 + sheet.rows.reduce((sum, row) => sum + row.height, 0);
     return {
-      canvasWidth: Math.max(tableWidth, ...sheet.images.map((image) => 48 + image.x + image.width)),
+      tableWidth,
+      tableHeight,
+      canvasWidth: Math.max(
+        tableWidth,
+        ...sheet.images.map((image) => 48 + image.x + image.width),
+        ...sheet.charts.map((chart) => 48 + chart.x + chart.width),
+      ),
       canvasHeight: Math.max(
         tableHeight,
         ...sheet.images.map((image) => 28 + image.y + image.height),
@@ -56,14 +69,12 @@ function XlsxSheetGridComponent({ sheet, zoom }: { sheet: XlsxSheet; zoom: numbe
         cache.set(cell.ref, {
           height: row.height,
           minHeight: row.height,
-          maxWidth: 320,
-          padding: '6px 8px',
+          padding: '0 4px',
           border: '1px solid #d9e0ea',
           color: '#1f2937',
-          fontSize: important ? 13 : 12,
-          lineHeight: 1.35,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
+          fontSize: important ? 14 : 13,
+          lineHeight: 1.2,
+          overflow: 'visible',
           ...styleFromCell(cell),
         });
       });
@@ -99,15 +110,13 @@ function XlsxSheetGridComponent({ sheet, zoom }: { sheet: XlsxSheet; zoom: numbe
             background: '#fff',
             boxShadow: '0 10px 24px rgba(15, 23, 42, 0.10)',
             border: '1px solid #b9c4d2',
+            width: metrics.tableWidth,
           }}
         >
           <colgroup>
             <col style={{ width: 48 }} />
             {sheet.columns.map((column) => (
-              <col
-                key={column.index}
-                style={{ width: column.width, display: column.hidden ? 'none' : undefined }}
-              />
+              <col key={column.index} style={{ width: column.width, display: column.hidden ? 'none' : undefined }} />
             ))}
           </colgroup>
           <thead>
@@ -166,13 +175,20 @@ function XlsxSheetGridComponent({ sheet, zoom }: { sheet: XlsxSheet; zoom: numbe
                 </th>
                 {row.cells.map((cell) => {
                   if (cell.hiddenByMerge) return null;
+                  const style = cell.style ?? {};
                   return (
                     <td
                       key={cell.ref}
                       colSpan={cell.colSpan}
                       rowSpan={cell.rowSpan}
                       title={cell.value}
-                      style={cellStyleCache.get(cell.ref)}
+                      style={{
+                        ...cellStyleCache.get(cell.ref),
+                        borderTop: style.borderTop ?? '1px solid #d9e0ea',
+                        borderRight: style.borderRight ?? '1px solid #d9e0ea',
+                        borderBottom: style.borderBottom ?? '1px solid #d9e0ea',
+                        borderLeft: style.borderLeft ?? '1px solid #d9e0ea',
+                      }}
                     >
                       {cell.value}
                     </td>

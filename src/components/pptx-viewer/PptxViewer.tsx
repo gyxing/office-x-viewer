@@ -1,4 +1,5 @@
 import { Empty } from 'antd';
+import { useEffect, useRef } from 'react';
 import type { PptxDocument } from '../../services/pptx/types';
 import { PptxThumbnail } from './PptxThumbnail';
 import { PptxSlide } from './PptxSlide';
@@ -11,6 +12,12 @@ type PptxViewerProps = {
 };
 
 export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxViewerProps) {
+  const viewportRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    viewportRef.current?.scrollTo({ left: 0, top: 0 });
+  }, [activeIndex, zoom]);
+
   if (!document?.slides.length) {
     return <Empty description="请先上传 PPTX 文件开始预览" />;
   }
@@ -21,8 +28,9 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
     <div
       style={{
         display: 'flex',
-        minHeight: 'calc(100vh - 56px)',
+        height: 'calc(100vh - 56px)',
         background: '#eef1f6',
+        overflow: 'hidden',
       }}
     >
       <aside
@@ -55,12 +63,14 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
         </div>
       </aside>
       <section
+        ref={viewportRef}
         style={{
           flex: '1 1 auto',
           minWidth: 0,
+          minHeight: 0,
           display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          justifyContent: 'flex-start',
+          alignItems: 'flex-start',
           overflow: 'auto',
           padding: 32,
         }}
@@ -68,8 +78,8 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
         <div
           style={{
             display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
+            justifyContent: 'flex-start',
+            alignItems: 'flex-start',
             width: '100%',
             minHeight: '100%',
           }}

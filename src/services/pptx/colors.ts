@@ -54,7 +54,7 @@ function hexToRgb(hex: string) {
 
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
-    .map((value) => clamp255(value).toString(16).padStart(2, '0'))
+    .map((value) => clamp255(Math.round(value)).toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
