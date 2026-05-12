@@ -1,3 +1,4 @@
+// paint 工具负责把 PPTX 颜色、透明度和渐变模型转换成 CSS/SVG 可用格式。
 import type { GradientFill } from '../../../services/pptx/types';
 
 export function colorWithOpacity(color?: string, opacity?: number) {

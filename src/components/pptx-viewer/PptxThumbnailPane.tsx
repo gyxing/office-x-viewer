@@ -1,3 +1,4 @@
+// PptxThumbnailPane 渲染幻灯片缩略图列表，并负责切换当前页。
 import { memo, useCallback } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxThumbnail } from './PptxThumbnail';

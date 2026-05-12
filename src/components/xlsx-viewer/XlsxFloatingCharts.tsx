@@ -1,3 +1,4 @@
+// XlsxFloatingCharts 渲染锚定在工作表画布上的浮动图表。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { XlsxChart } from '../../services/xlsx/types';

@@ -1,3 +1,4 @@
+// DocxViewer 负责 DOCX 文档预览整体布局，包括顶部摘要栏和页面滚动区。
 import { Typography } from 'antd';
 import { memo, useMemo } from 'react';
 import type { DocxDocument } from '../../services/docx/types';

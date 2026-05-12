@@ -1,3 +1,4 @@
+// TableRenderer 渲染 PPTX 表格元素，包括单元格填充、边框和文字样式。
 import { memo } from 'react';
 import type { TableElement } from '../../../services/pptx/types';
 
@@ -48,9 +49,9 @@ function TableRendererComponent({ element }: TableRendererProps) {
                 key={cellIndex}
                 style={{
                   width: columnWidths[cellIndex],
-                  background: colorWithOpacity(cell.backgroundColor, cell.backgroundOpacity),
+                  background: colorWithOpacity(cell.backgroundColor ?? undefined, cell.backgroundOpacity),
                   borderStyle: cell.borderColor ? 'solid' : 'none',
-                  borderColor: colorWithOpacity(cell.borderColor, cell.borderOpacity) ?? 'transparent',
+                  borderColor: colorWithOpacity(cell.borderColor ?? undefined, cell.borderOpacity) ?? 'transparent',
                   borderWidth: cell.borderWidth ?? 1,
                   padding: `${cell.margins?.top ?? 0}px ${cell.margins?.right ?? 0}px ${cell.margins?.bottom ?? 0}px ${cell.margins?.left ?? 0}px`,
                   verticalAlign: cell.verticalAlign ?? 'middle',

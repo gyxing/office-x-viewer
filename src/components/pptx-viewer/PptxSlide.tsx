@@ -1,3 +1,4 @@
+// PptxSlide 按 PPTX 解析模型渲染单页幻灯片背景、图形、文本、图片、表格和图表。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { SlideElement, SlideModel } from '../../services/pptx/types';
@@ -41,6 +42,7 @@ const ChartFrame = memo(function ChartFrame({
 
 function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   const scale = zoom / 100;
+  // renderKey 会参与 SVG 渐变 id，缩略图和主画布同时渲染同一页时必须保持 id 隔离。
   const slideRenderKey = renderKey ?? `slide-${slide.id}`;
   const slideStyle = useMemo<CSSProperties>(
     () => ({

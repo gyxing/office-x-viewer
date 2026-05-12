@@ -1,3 +1,4 @@
+// XlsxFloatingImages 渲染锚定在工作表画布上的浮动图片。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { XlsxImage } from '../../services/xlsx/types';

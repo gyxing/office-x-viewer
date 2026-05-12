@@ -1,14 +1,15 @@
+// DocListBlock 渲染 DOC 有序或无序列表块。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
-import type { DocListBlock } from '../../services/doc/types';
+import type { DocListBlock as DocListBlockModel } from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
-import { docTextStyleToCss } from './shared';
+import { docTextStyleToCss } from './docRenderUtils';
 
-type DocListProps = {
-  block: DocListBlock;
+type DocListBlockProps = {
+  block: DocListBlockModel;
 };
 
-function DocListComponent({ block }: DocListProps) {
+function DocListBlockComponent({ block }: DocListBlockProps) {
   const itemStyle = useMemo<CSSProperties>(
     () => ({
       ...docTextStyleToCss(block.style),
@@ -28,4 +29,4 @@ function DocListComponent({ block }: DocListProps) {
   );
 }
 
-export const DocList = memo(DocListComponent);
+export const DocListBlock = memo(DocListBlockComponent);

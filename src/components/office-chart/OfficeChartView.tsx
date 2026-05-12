@@ -1,3 +1,4 @@
+// OfficeChartView 将解析后的 Office 图表模型渲染为 ECharts 图表。
 import { Empty, Spin } from 'antd';
 import type { CSSProperties } from 'react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,6 +13,7 @@ type OfficeChartViewProps = {
   zoom?: number;
 };
 
+// 地图 GeoJSON 注册到 ECharts 后是全局状态，同一个 mapName 不需要重复下载和注册。
 const registeredMaps = new Set<string>();
 
 function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeChartViewProps) {
@@ -38,6 +40,7 @@ function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeCh
     let resizeObserver: ResizeObserver | undefined;
     let intersectionObserver: IntersectionObserver | undefined;
 
+    // 图表可能出现在缩略图、表格浮层或文档深处，进入视口后再加载 ECharts，减少首屏成本。
     if (hostRef.current && typeof IntersectionObserver !== 'undefined') {
       intersectionObserver = new IntersectionObserver(
         (entries) => {
@@ -63,6 +66,7 @@ function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeCh
           }
 
           try {
+            // 地图图表需要额外 GeoJSON；失败时优先回退到 Office/WPS 里携带的快照图。
             const response = await fetch(chart.mapGeoJsonUrl);
             if (!response.ok) throw new Error(`Map data request failed: ${response.status}`);
             const geoJson = await response.json();
@@ -82,6 +86,7 @@ function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeCh
       instance.setOption(buildOfficeChartOption(chart), { notMerge: true, lazyUpdate: true });
       setReady(true);
 
+      // 外层会随 zoom 和文档布局变化，ResizeObserver 保证 ECharts 画布尺寸同步。
       resizeObserver = new ResizeObserver(() => {
         instance.resize();
       });

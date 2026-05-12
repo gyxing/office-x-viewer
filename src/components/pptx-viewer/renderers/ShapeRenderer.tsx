@@ -1,3 +1,4 @@
+// ShapeRenderer 渲染 PPTX 基础图形和自定义路径图形。
 import { memo } from 'react';
 import type { ShapeElement } from '../../../services/pptx/types';
 import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
@@ -106,4 +107,3 @@ function ShapeRendererComponent({ element, renderKey }: ShapeRendererProps) {
 }
 
 export const ShapeRenderer = memo(ShapeRendererComponent);
-

@@ -1,3 +1,4 @@
+// PptxSlideViewport 渲染当前幻灯片的滚动视口，并在翻页或缩放时复位滚动位置。
 import { memo, useEffect, useRef } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';

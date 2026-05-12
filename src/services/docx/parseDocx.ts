@@ -76,6 +76,7 @@ const DEFAULT_PAGE: DocxPage = {
 
 const DEFAULT_DOCX_FONT_FAMILY = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
 
+// DOCX 与 PPTX 类似是 zip 包结构，正文、样式、主题、媒体通过关系文件互相引用。
 function buildPackageState(entries: OfficeEntryMap): DocxPackageState {
   const relationships: DocxPackageState['relationships'] = {};
 
@@ -359,6 +360,7 @@ function readFontFamily(rPr: Element | null | undefined, theme: OfficeTheme, all
 }
 
 function readDocxStyles(entries: OfficeEntryMap, theme: OfficeTheme): DocxStyleCatalog {
+  // styles.xml 会提供默认样式和命名样式，段落/文字解析时再与直接格式合并。
   const xml = readXml(entries, 'word/styles.xml');
   if (!xml) return { defaults: {}, styles: {} };
 
@@ -493,6 +495,7 @@ function resolveParagraphStyle(
   catalog: DocxStyleCatalog,
   theme: OfficeTheme,
 ) {
+  // 段落最终样式 = 默认段落样式 + 命名段落样式 + 段落直接属性 + 段落内 run 属性。
   const styleId = attr(childByLocalName(pPr, 'pStyle'), 'w:val') ?? attr(childByLocalName(pPr, 'pStyle'), 'val');
   const baseStyle = resolveDocxStyle(catalog.defaults.paragraphStyleId, catalog);
   const namedStyle = resolveDocxStyle(styleId, catalog);
@@ -734,6 +737,7 @@ function resolveWebExtensionSnapshot(doc: XMLDocument, webExtensionPath: string,
 }
 
 function parseWpsWebExtensionChart(node: Element, context: ParseContext): DocxChartBlock | undefined {
+  // WPS 图表常以 webExtension JSON 存储，和标准 OOXML chart 不同，需要单独转换。
   const webExtensionRef = descendantByLocalName(node, 'webExtensionRef');
   const relId = attr(webExtensionRef, 'r:id') ?? attr(webExtensionRef, 'id');
   const target = relId ? context.documentRels[relId]?.target : undefined;
@@ -757,11 +761,13 @@ function parseWpsWebExtensionChart(node: Element, context: ParseContext): DocxCh
     : undefined;
   const legendStyle = readWpsLegendStyle(chartStyle?.legend);
   const labelStyle = chartStyle?.label && typeof chartStyle.label === 'object' ? (chartStyle.label as Record<string, unknown>) : undefined;
-  const textLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.textLabel && typeof chartStyle.label.textLabel === 'object'
-    ? (chartStyle.label.textLabel as Record<string, unknown>)
+  const textLabel = labelStyle?.textLabel;
+  const numberLabel = labelStyle?.numberLabel;
+  const textLabelStyle = textLabel && typeof textLabel === 'object'
+    ? (textLabel as Record<string, unknown>)
     : undefined;
-  const numberLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.numberLabel && typeof chartStyle.label.numberLabel === 'object'
-    ? (chartStyle.label.numberLabel as Record<string, unknown>)
+  const numberLabelStyle = numberLabel && typeof numberLabel === 'object'
+    ? (numberLabel as Record<string, unknown>)
     : undefined;
   const labelPosition = typeof labelStyle?.position === 'string'
     ? labelStyle.position
@@ -1616,6 +1622,7 @@ function markTitle(blocks: DocxBlock[]) {
 }
 
 export async function parseDocx(file: File): Promise<DocxDocument> {
+  // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
   const entries = await loadDocxEntries(file);
   const packageState = buildPackageState(entries);
   const theme = readOfficeTheme(readXml(entries, 'word/theme/theme1.xml'));

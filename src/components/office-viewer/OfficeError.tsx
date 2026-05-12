@@ -1,3 +1,4 @@
+// OfficeError 展示文件解析或预览过程中的错误信息。
 import { Alert } from 'antd';
 import { memo } from 'react';
 

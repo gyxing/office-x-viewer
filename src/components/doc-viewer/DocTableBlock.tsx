@@ -1,13 +1,14 @@
+// DocTableBlock 渲染 DOC 表格块，包括单元格文字、边框和列宽。
 import { memo } from 'react';
-import type { DocTableBlock } from '../../services/doc/types';
+import type { DocTableBlock as DocTableBlockModel } from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
-import { docTextStyleToCss } from './shared';
+import { docTextStyleToCss } from './docRenderUtils';
 
-type DocTableProps = {
-  block: DocTableBlock;
+type DocTableBlockProps = {
+  block: DocTableBlockModel;
 };
 
-function DocTableComponent({ block }: DocTableProps) {
+function DocTableBlockComponent({ block }: DocTableBlockProps) {
   const columnCount = Math.max(...block.rows.map((row) => row.cells.length), 1);
   const borderColor = block.style?.borderColor ?? '#cfd7e3';
   const totalColumns = block.columns?.reduce((sum, width) => sum + width, 0) ?? 0;
@@ -56,4 +57,4 @@ function DocTableComponent({ block }: DocTableProps) {
   );
 }
 
-export const DocTable = memo(DocTableComponent);
+export const DocTableBlock = memo(DocTableBlockComponent);

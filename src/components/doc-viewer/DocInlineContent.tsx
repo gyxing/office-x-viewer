@@ -1,6 +1,7 @@
+// DocInlineContent 渲染 DOC 段落或表格单元格内的文本和图片片段。
 import { memo } from 'react';
 import type { DocTextInline } from '../../services/doc/types';
-import { inlineStyleToCss } from './shared';
+import { inlineStyleToCss } from './docRenderUtils';
 
 type DocInlineContentProps = {
   inlines?: DocTextInline[];

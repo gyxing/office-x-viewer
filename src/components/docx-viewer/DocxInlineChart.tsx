@@ -1,3 +1,4 @@
+// DocxInlineChart 渲染 DOCX 行内图表。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocxInline } from '../../services/docx/types';

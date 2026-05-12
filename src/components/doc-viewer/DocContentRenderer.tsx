@@ -1,20 +1,22 @@
+// DocContentRenderer 渲染 DOC 内容块列表，并合并连续图片段落以优化排版。
 import { memo, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { DocBlock } from '../../services/doc/types';
 import { DocBlockRenderer } from './DocBlockRenderer';
 import { DocImageLayout } from './DocImageLayout';
-import { imagesFromImageOnlyParagraph } from './shared';
+import { imagesFromImageOnlyParagraph } from './docRenderUtils';
 
-type DocBlocksProps = {
+type DocContentRendererProps = {
   blocks: DocBlock[];
   contentWidth: number;
 };
 
-function buildDocBlocks(blocks: DocBlock[], contentWidth: number) {
+function buildDocContent(blocks: DocBlock[], contentWidth: number) {
   const renderedBlocks: ReactNode[] = [];
   let index = 0;
 
   while (index < blocks.length) {
+    // DOC 解析出的图片经常是连续的“纯图片段落”，合并后再排版更接近 Word 的视觉结果。
     const images = imagesFromImageOnlyParagraph(blocks[index]);
     if (!images.length) {
       renderedBlocks.push(<DocBlockRenderer key={blocks[index].id} block={blocks[index]} />);
@@ -25,6 +27,7 @@ function buildDocBlocks(blocks: DocBlock[], contentWidth: number) {
     const imageGroup = [...images];
     let nextIndex = index + 1;
     while (nextIndex < blocks.length) {
+      // 连续图片段落作为一个图片组渲染，后续根据宽度决定单列或双列。
       const nextImages = imagesFromImageOnlyParagraph(blocks[nextIndex]);
       if (!nextImages.length) break;
       imageGroup.push(...nextImages);
@@ -38,9 +41,9 @@ function buildDocBlocks(blocks: DocBlock[], contentWidth: number) {
   return renderedBlocks;
 }
 
-function DocBlocksComponent({ blocks, contentWidth }: DocBlocksProps) {
-  const renderedBlocks = useMemo(() => buildDocBlocks(blocks, contentWidth), [blocks, contentWidth]);
+function DocContentRendererComponent({ blocks, contentWidth }: DocContentRendererProps) {
+  const renderedBlocks = useMemo(() => buildDocContent(blocks, contentWidth), [blocks, contentWidth]);
   return <>{renderedBlocks}</>;
 }
 
-export const DocBlocks = memo(DocBlocksComponent);
+export const DocContentRenderer = memo(DocContentRendererComponent);

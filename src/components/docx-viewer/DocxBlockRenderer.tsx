@@ -1,8 +1,9 @@
+// DocxBlockRenderer 根据 DOCX 块类型分发到段落、表格或图表渲染组件。
 import { memo } from 'react';
 import type { DocxBlock } from '../../services/docx/types';
-import { DocxChartBlockView } from './DocxChartBlock';
+import { DocxChartBlock } from './DocxChartBlock';
 import { DocxParagraph } from './DocxParagraph';
-import { DocxTableBlockView } from './DocxTableBlock';
+import { DocxTableBlock } from './DocxTableBlock';
 
 type DocxBlockRendererProps = {
   block: DocxBlock;
@@ -10,8 +11,8 @@ type DocxBlockRendererProps = {
 };
 
 function DocxBlockRendererComponent({ block, availableWidth }: DocxBlockRendererProps) {
-  if (block.type === 'table') return <DocxTableBlockView block={block} availableWidth={availableWidth} />;
-  if (block.type === 'chart') return <DocxChartBlockView block={block} zoom={100} />;
+  if (block.type === 'table') return <DocxTableBlock block={block} availableWidth={availableWidth} />;
+  if (block.type === 'chart') return <DocxChartBlock block={block} zoom={100} />;
   return <DocxParagraph block={block} />;
 }
 

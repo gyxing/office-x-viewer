@@ -1,14 +1,15 @@
+// DocParagraphBlock 渲染 DOC 段落块，并应用推断出的标题、正文和文字样式。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
-import type { DocParagraphBlock } from '../../services/doc/types';
+import type { DocParagraphBlock as DocParagraphBlockModel } from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
-import { docTextStyleToCss } from './shared';
+import { docTextStyleToCss } from './docRenderUtils';
 
-type DocParagraphProps = {
-  block: DocParagraphBlock;
+type DocParagraphBlockProps = {
+  block: DocParagraphBlockModel;
 };
 
-function DocParagraphComponent({ block }: DocParagraphProps) {
+function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
   const paragraphStyle = useMemo<CSSProperties>(
@@ -29,4 +30,4 @@ function DocParagraphComponent({ block }: DocParagraphProps) {
   );
 }
 
-export const DocParagraph = memo(DocParagraphComponent);
+export const DocParagraphBlock = memo(DocParagraphBlockComponent);

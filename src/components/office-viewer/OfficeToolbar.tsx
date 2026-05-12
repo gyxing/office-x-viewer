@@ -1,3 +1,4 @@
+// OfficeToolbar 提供上传、翻页、缩放、全屏等 OfficeViewer 顶部通用操作。
 import {
   FileExcelOutlined,
   FilePptOutlined,

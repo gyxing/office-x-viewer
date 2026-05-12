@@ -1,7 +1,8 @@
+// DocImageLayout 渲染 DOC 中连续图片段落形成的图片组，并按内容宽度决定排布。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocImage } from '../../services/doc/types';
-import { DOC_IMAGE_ROW_GAP, imageRows } from './shared';
+import { DOC_IMAGE_ROW_GAP, imageRows } from './docRenderUtils';
 
 type DocImageLayoutProps = {
   images: DocImage[];

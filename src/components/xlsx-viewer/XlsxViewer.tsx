@@ -1,3 +1,4 @@
+// XlsxViewer 负责 XLSX 工作簿预览的整体布局，包括工作表选择和当前工作表内容区。
 import { memo, useMemo } from 'react';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeEmpty } from '../office-viewer/OfficeEmpty';

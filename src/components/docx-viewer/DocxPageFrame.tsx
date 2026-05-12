@@ -1,3 +1,4 @@
+// DocxPageFrame 提供 DOCX 页面框架，负责页宽、页高、页边距、边框和缩放。
 import { memo, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { DocxPage } from '../../services/docx/types';
@@ -10,6 +11,7 @@ type DocxPageFrameProps = {
 
 function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
   const scale = zoom / 100;
+  // DOCX 的边框和页边距来自文档本身，放在 article 上才能随页面坐标系一起缩放。
   const shellStyle = useMemo<CSSProperties>(
     () => ({
       width: page.width * scale,

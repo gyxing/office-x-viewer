@@ -78,6 +78,7 @@ type SheetMetrics = {
   defaultRowHeight: number;
 };
 
+// XLSX 中工作表、drawing、chart、media 分散在不同 XML，通过关系表统一解析引用路径。
 function buildPackageState(entries: OfficeEntryMap): XlsxPackageState {
   const relationships: XlsxPackageState['relationships'] = {};
 
@@ -631,6 +632,7 @@ function readSheet(
   styleBook: StyleBook,
   packageState: XlsxPackageState,
 ): XlsxSheet {
+  // 先读取真实单元格，再补齐空白单元格，确保渲染层能按矩阵方式稳定生成表格。
   const doc = parseXml(xml);
   const sheetNode = doc.documentElement;
   const range = attr(childByLocalName(sheetNode, 'dimension'), 'ref');
@@ -668,6 +670,7 @@ function readSheet(
 
   const drawingBounds = readDrawingBounds(sheetNode, sheetInfo.path, packageState);
   if (drawingBounds) {
+    // 图片/图表可能锚定在没有单元格内容的区域，需要扩展表格范围保证它们可见。
     maxRow = Math.max(maxRow, drawingBounds.maxRow);
     maxColumn = Math.max(maxColumn, drawingBounds.maxColumn);
   }
@@ -718,6 +721,7 @@ function readSheet(
 }
 
 export async function parseXlsx(file: File): Promise<XlsxWorkbook> {
+  // sharedStrings 和 styles 是全工作簿共享数据，先解析后再逐个 sheet 套用。
   const entries = await loadXlsxEntries(file);
   const packageState = buildPackageState(entries);
   const workbookXml = readXml(entries, 'xl/workbook.xml');

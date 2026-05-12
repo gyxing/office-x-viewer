@@ -1,14 +1,15 @@
+// DocxTableBlock 渲染 DOCX 表格块，包括列宽、单元格边框、内边距和嵌套段落/图表。
 import { memo } from 'react';
-import type { DocxTableBlock } from '../../services/docx/types';
+import type { DocxTableBlock as DocxTableBlockModel } from '../../services/docx/types';
 import { OfficeChartView } from '../office-chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
 
 type DocxTableBlockProps = {
-  block: DocxTableBlock;
+  block: DocxTableBlockModel;
   availableWidth?: number;
 };
 
-function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockProps) {
+function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps) {
   const marginLeft = block.align === 'center' ? 'auto' : block.align === 'right' ? 'auto' : 0;
   const marginRight = block.align === 'center' ? 'auto' : block.align === 'right' ? 0 : 'auto';
   const totalColumns = block.columns?.reduce((sum, width) => sum + width, 0) ?? block.width ?? 0;
@@ -81,4 +82,4 @@ function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockPr
   );
 }
 
-export const DocxTableBlockView = memo(DocxTableBlockViewComponent);
+export const DocxTableBlock = memo(DocxTableBlockComponent);

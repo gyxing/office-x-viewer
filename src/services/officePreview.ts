@@ -7,6 +7,7 @@ import { parseDocx } from './docx/parseDocx';
 import { parsePptx } from './pptx/parsePptx';
 import { parseXlsx } from './xlsx/parseXlsx';
 
+// 组件入口只关心“文件类型 + 解析结果”，具体格式的包结构解析都收敛在各自 service 中。
 export type PreviewKind = 'pptx' | 'xlsx' | 'docx' | 'doc';
 
 export type ParsedOfficeFile =
@@ -20,6 +21,7 @@ export function detectPreviewKind(fileName: string): PreviewKind {
   if (lower.endsWith('.xlsx')) return 'xlsx';
   if (lower.endsWith('.docx')) return 'docx';
   if (lower.endsWith('.doc')) return 'doc';
+  // 当前主场景是演示文稿预览，不认识的扩展名按 PPTX 走，方便示例文件缺少后缀时仍可尝试解析。
   return 'pptx';
 }
 

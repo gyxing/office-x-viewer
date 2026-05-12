@@ -1,3 +1,4 @@
+// XlsxSheetTabs 渲染工作表标签栏，并展示当前工作表范围或行列数量。
 import { Tabs, Typography } from 'antd';
 import { memo, useMemo } from 'react';
 import type { XlsxSheet, XlsxWorkbook } from '../../services/xlsx/types';

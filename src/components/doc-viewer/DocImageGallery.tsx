@@ -1,3 +1,4 @@
+// DocImageGallery 展示未能稳定锚定到正文位置的 DOC 图片。
 import { Typography } from 'antd';
 import { memo } from 'react';
 import type { DocImage } from '../../services/doc/types';

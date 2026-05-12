@@ -76,8 +76,8 @@ export type OfficeChartModel = {
       color?: string;
       fontFamily?: string;
       fontSize?: number;
-      fontStyle?: string;
-      fontWeight?: string | number;
+      fontStyle?: 'normal' | 'italic' | 'oblique';
+      fontWeight?: 'normal' | 'bold' | 'bolder' | 'lighter' | number;
     };
   };
   showDataLabels?: boolean;
@@ -679,6 +679,7 @@ function buildRadarIndicators(categories: string[], series: OfficeChartSeries[])
 }
 
 export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OFFICE_THEME): OfficeChartModel {
+  // 先把 OOXML chart 统一成中间模型，组件层不直接依赖复杂的 c:* XML 结构。
   const doc = parseXml(xml);
   const chartSpace = doc.documentElement;
   const chart = descendantByLocalName(chartSpace, 'chart');
@@ -709,7 +710,7 @@ export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OF
     radarIndicators: type === 'radar' ? buildRadarIndicators(categories, series) : undefined,
     holeSize: primaryPlot?.holeSize,
     startAngle: primaryPlot?.startAngle,
-    ofPieType: primaryPlot?.ofPieType,
+    ofPieType: primaryPlot?.ofPieType === 'bar' || primaryPlot?.ofPieType === 'pie' ? primaryPlot.ofPieType : undefined,
     ofPieSecondPlotCount: primaryPlot?.ofPieSecondPlotCount,
     secondPieSize: primaryPlot?.secondPieSize,
     gapWidth: primaryPlot?.gapWidth,
@@ -767,7 +768,7 @@ function buildLegend(chart: OfficeChartModel, itemCount = chart.series.length) {
       ...OFFICE_TEXT_STYLE,
       ...chart.legendStyle?.textStyle,
     },
-  };
+  } as const;
 
   switch (chart.legendPosition) {
     case 'bottom':
@@ -1147,6 +1148,7 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
 }
 
 export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
+  // 中间模型在这里映射为 ECharts option，PPTX/DOCX/XLSX 共用同一套图表渲染逻辑。
   const categories = resolveCategories(chart);
   const normalizedSeriesTypes = chart.series.map((item) => normalizeSeriesType(item.type ?? chart.type));
   const uniqueSeriesTypes = new Set(normalizedSeriesTypes);

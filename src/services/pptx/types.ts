@@ -150,9 +150,9 @@ export type TableCell = {
   text: string;
   paragraphs?: TextParagraph[];
   style?: TextStyle;
-  backgroundColor?: string;
+  backgroundColor?: string | null;
   backgroundOpacity?: number;
-  borderColor?: string;
+  borderColor?: string | null;
   borderOpacity?: number;
   borderWidth?: number;
   margins?: {

@@ -1,3 +1,4 @@
+// PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
 import { memo } from 'react';
 import type { PptxDocument } from '../../services/pptx/types';
 import { OfficeEmpty } from '../office-viewer/OfficeEmpty';

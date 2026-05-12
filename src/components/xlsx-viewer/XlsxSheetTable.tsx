@@ -1,7 +1,8 @@
+// XlsxSheetTable 将工作表行列和单元格模型渲染为带表头的 HTML 表格。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
-import { isInstructionCell, styleFromCell } from './shared';
+import { buildXlsxCellStyle, isHighlightedXlsxCell } from './sheetRenderUtils';
 
 type XlsxSheetTableProps = {
   sheet: XlsxSheet;
@@ -14,12 +15,13 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
     sheet.rows.forEach((row) => {
       row.cells.forEach((cell) => {
         if (cell.hiddenByMerge) return;
-        const important = isInstructionCell(cell.style);
+        const important = isHighlightedXlsxCell(cell.style);
+        // 大表格渲染时单元格很多，先按 ref 缓存静态样式，避免每次 JSX 展开都重复计算。
         cache.set(cell.ref, {
           height: row.height,
           minHeight: row.height,
           fontSize: important ? 14 : 13,
-          ...styleFromCell(cell),
+          ...buildXlsxCellStyle(cell),
         });
       });
     });

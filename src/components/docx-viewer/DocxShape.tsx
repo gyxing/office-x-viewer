@@ -1,3 +1,4 @@
+// DocxShape 渲染 DOCX 行内形状，支持矩形、椭圆、线条、自定义路径和形状内文字。
 import { memo, useCallback, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocxInline } from '../../services/docx/types';

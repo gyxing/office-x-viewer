@@ -1,3 +1,4 @@
+// OfficeViewer 的工具栏尺寸、缩放范围和空状态文案等共享常量。
 export const OFFICE_VIEWER_HEADER_HEIGHT = 56;
 
 export const OFFICE_ZOOM_LEVELS = [50, 75, 100, 125, 150, 200];

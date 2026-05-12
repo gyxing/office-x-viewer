@@ -1,8 +1,9 @@
+// DocViewer 负责旧版 DOC 降级预览的整体布局、警告说明和页面滚动区。
 import { Alert, Typography } from 'antd';
 import { memo, useMemo } from 'react';
 import type { DocDocument } from '../../services/doc/types';
 import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
-import { DocBlocks } from './DocBlocks';
+import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
 import './index.less';
@@ -75,7 +76,7 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
               <Alert type="warning" showIcon message="DOC 预览说明" description={document.warnings.join(' ')} />
             </div>
           ) : null}
-          <DocBlocks blocks={document.blocks} contentWidth={contentWidth} />
+          <DocContentRenderer blocks={document.blocks} contentWidth={contentWidth} />
           <DocImageGallery images={unanchoredImages} />
         </DocPageFrame>
       </div>

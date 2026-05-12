@@ -1,7 +1,8 @@
+// DocxParagraph 渲染 DOCX 段落块，并应用段落级缩进、间距、边框和文字样式。
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocxParagraphBlock } from '../../services/docx/types';
-import { emptyParagraphHeight, textStyleToCss } from './shared';
+import { buildDocxTextStyle, getDocxEmptyParagraphHeight } from './docxRenderUtils';
 import { DocxInlineContent } from './DocxInlineContent';
 
 type DocxParagraphProps = {
@@ -20,7 +21,7 @@ function DocxParagraphComponent({ block, compact = false }: DocxParagraphProps) 
       marginLeft: block.indentLeft,
       paddingLeft: block.paddingLeft,
       paddingRight: block.paddingRight,
-      minHeight: hasContent ? undefined : emptyParagraphHeight(block),
+      minHeight: hasContent ? undefined : getDocxEmptyParagraphHeight(block),
       textAlign: block.align,
       lineHeight: block.lineHeight,
       color: block.style?.color ?? '#000',
@@ -34,7 +35,7 @@ function DocxParagraphComponent({ block, compact = false }: DocxParagraphProps) 
       textIndent: block.firstLineIndent,
       paddingTop: block.paddingTop,
       paddingBottom: block.paddingBottom,
-      ...textStyleToCss(block.style),
+      ...buildDocxTextStyle(block.style),
     }),
     [block, compact, hasContent],
   );
@@ -49,4 +50,3 @@ function DocxParagraphComponent({ block, compact = false }: DocxParagraphProps) 
 }
 
 export const DocxParagraph = memo(DocxParagraphComponent);
-

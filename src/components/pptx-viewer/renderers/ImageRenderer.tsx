@@ -1,3 +1,4 @@
+// ImageRenderer 渲染 PPTX 图片元素，并处理裁剪、旋转和翻转。
 import { memo } from 'react';
 import type { ImageElement } from '../../../services/pptx/types';
 

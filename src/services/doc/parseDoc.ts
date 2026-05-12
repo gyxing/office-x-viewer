@@ -89,6 +89,7 @@ type PendingTableCell = {
 
 type DocFontTable = string[];
 
+// 旧版 .doc 是 OLE/CFB 二进制容器，不是 zip；这里实现最小可用的前端降级解析。
 const DOC_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const FREE_SECTOR = 0xffffffff;
 const END_OF_CHAIN = 0xfffffffe;
@@ -291,6 +292,7 @@ function readMiniFat(bytes: Uint8Array, startSector: number, sectorCount: number
 }
 
 function parseCfb(bytes: Uint8Array): CfbFile {
+  // CFB 先通过 FAT/miniFAT 还原各个 stream，后续 WordDocument/Table stream 才能继续解析。
   if (!isOleDoc(bytes)) {
     throw new Error('\u4e0d\u662f\u6709\u6548\u7684 Word 97-2003 DOC \u6587\u4ef6');
   }
@@ -391,6 +393,7 @@ function findPieceTable(clx: Uint8Array) {
 }
 
 function parsePieces(tableStream: Uint8Array, fib: DocFib) {
+  // Piece table 描述正文字符区间与 WordDocument 字节偏移的映射，是读取 DOC 正文的核心索引。
   const clx = tableStream.slice(fib.fcClx, fib.fcClx + fib.lcbClx);
   const pieceTable = findPieceTable(clx);
   if (!pieceTable) return [];
@@ -1071,13 +1074,15 @@ function mergeAdjacentInlines(inlines: DocTextInline[]) {
 function trimInlines(inlines: DocTextInline[]) {
   const result = inlines
     .map((inline) => ({ ...inline }))
-    .filter((inline) => inline.type === 'image' || inline.text.length);
+    .filter((inline) => inline.type === 'image' || (inline.type === 'text' && inline.text.length));
 
   while (result.length && result[0].type === 'text' && !result[0].text.trim()) {
     result.shift();
   }
 
-  while (result.length && result[result.length - 1].type === 'text' && !result[result.length - 1].text.trim()) {
+  while (result.length) {
+    const last = result[result.length - 1];
+    if (last.type !== 'text' || last.text.trim()) break;
     result.pop();
   }
 
@@ -1097,6 +1102,7 @@ function looksLikeTableRow(line: string) {
 function splitTableCells(line: DocLine): PendingTableCell[] {
   const cells: PendingTableCell[] = [];
   let current: DocTextInline[] = [];
+  const textInlines = (inlines: DocTextInline[]) => inlines.filter((item): item is Extract<DocTextInline, { type: 'text' }> => item.type === 'text');
 
   line.inlines.forEach((inline) => {
     if (inline.type === 'image') {
@@ -1112,7 +1118,7 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
           cells.push({
             text: normalizeBlockText(textFromInlines(inlines)),
             inlines,
-            style: dominantStyle(inlines.map((item) => ({ text: item.text, style: item.style }))),
+            style: dominantStyle(textInlines(inlines).map((item) => ({ text: item.text, style: item.style }))),
           });
         }
         current = [];
@@ -1129,7 +1135,7 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
     cells.push({
       text: normalizeBlockText(textFromInlines(inlines)),
       inlines,
-      style: dominantStyle(inlines.map((item) => ({ text: item.text, style: item.style }))),
+      style: dominantStyle(textInlines(inlines).map((item) => ({ text: item.text, style: item.style }))),
     });
   }
 
@@ -1728,6 +1734,7 @@ function buildDocDocument(fileName: string, blocks: DocBlock[], warnings: string
 }
 
 export async function parseDoc(file: File): Promise<DocDocument> {
+  // 非 OLE 文件按纯文本降级处理；OLE DOC 则解析 CFB、FIB、piece table 和样式 run。
   const bytes = await readBytes(file);
   const warnings: string[] = [];
 

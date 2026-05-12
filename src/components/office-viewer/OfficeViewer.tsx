@@ -1,3 +1,4 @@
+// OfficeViewer 是组件库对外主入口，负责文件上传解析、格式状态和全局工具栏交互。
 import { Layout } from 'antd';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -38,6 +39,7 @@ function OfficeViewerComponent({
   onFileParsed,
   onError,
 }: OfficeViewerProps) {
+  // OfficeViewer 是公共组件入口，集中管理“文件状态”和“格式私有状态”，避免使用者再组合多个子组件。
   const [fileName, setFileName] = useState(defaultFileName);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -56,6 +58,7 @@ function OfficeViewerComponent({
       setError(undefined);
 
       try {
+        // 上传新文件时同步重置所有格式相关状态，防止上一份文档的页码/缩放/工作表残留到新文档。
         const fileKind = detectPreviewKind(file.name);
         setPreviewKind(fileKind);
         setFileName(file.name);
@@ -70,6 +73,7 @@ function OfficeViewerComponent({
         setActiveSheetId(parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined);
         onFileParsed?.(parsed, file);
       } catch (nextError) {
+        // 对外回调始终给 Error 实例，组件内部只保存可展示的 message。
         const normalizedError = nextError instanceof Error ? nextError : new Error('文件解析失败');
         setError(normalizedError.message);
         onError?.(normalizedError, file);
@@ -87,6 +91,7 @@ function OfficeViewerComponent({
 
   const hasDocument = useMemo(
     () =>
+      // 工具栏的翻页/缩放按钮只依赖“当前格式是否有可渲染内容”，不要耦合到具体 viewer 实现。
       previewKind === 'pptx'
         ? Boolean(pptxDocument?.slides.length)
         : previewKind === 'xlsx'

@@ -1,3 +1,4 @@
+// TextRenderer 渲染 PPTX 文本框，并处理文本框形状、渐变填充、段落和 run 样式。
 import { memo } from 'react';
 import type { TextElement } from '../../../services/pptx/types';
 import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
@@ -38,6 +39,7 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
   const isVectorShape = Boolean(element.path);
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
+  // 同一页可能在缩略图和主视口同时出现，SVG defs id 需要带 renderKey 防止互相引用错。
   const gradientId = isGradientFill ? buildRendererId(renderKey, element.id, 'fill-gradient') : undefined;
 
   return (
@@ -183,4 +185,3 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
 }
 
 export const TextRenderer = memo(TextRendererComponent);
-

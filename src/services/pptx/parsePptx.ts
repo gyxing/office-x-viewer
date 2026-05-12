@@ -25,6 +25,7 @@ import type {
   SlideElement,
   SlideModel,
   SlideBackground,
+  TableCell,
   TableElement,
   ThemeModel,
   TextElement,
@@ -96,7 +97,7 @@ type PlaceholderStyle = {
   y?: number;
   width?: number;
   height?: number;
-  fill?: string | null;
+  fill?: string | GradientFill | null;
   fillOpacity?: number;
   stroke?: string | null;
   strokeOpacity?: number;
@@ -108,6 +109,7 @@ type PlaceholderStyle = {
   levels?: Record<number, TextStyle>;
 };
 
+// PPTX 是 zip 包结构，幻灯片、母版、布局、媒体之间都通过 .rels 关系文件串联。
 function relationshipTargets(rels: Record<string, OfficeRelationship>) {
   const map: Record<string, string> = {};
   Object.entries(rels).forEach(([id, rel]) => {
@@ -434,7 +436,7 @@ function readTextPresetMap(txStyles: Element | null, theme: ThemeModel) {
   return presets;
 }
 
-function readTableCellStyle(node: Element | null, theme: ThemeModel): TableCellStyle {
+function readTableCellStyle(node: Element | null | undefined, theme: ThemeModel): TableCellStyle {
   if (!node) return {};
   const tcStyle = childByLocalName(node, 'tcStyle') ?? node;
   const tcTxStyle = childByLocalName(node, 'tcTxStyle') ?? node;
@@ -516,7 +518,7 @@ function mergeTableCellStyle(...styles: Array<TableCellStyle | undefined>) {
   }, {});
 }
 
-function readCustomGeometry(spPr: Element | null) {
+function readCustomGeometry(spPr: Element | null | undefined) {
   const custGeom = childByLocalName(spPr, 'custGeom');
   if (!custGeom) return {};
 
@@ -566,7 +568,7 @@ function readCustomGeometry(spPr: Element | null) {
   };
 }
 
-function readShapeVisualStyle(spPr: Element | null, theme: ThemeModel) {
+function readShapeVisualStyle(spPr: Element | null | undefined, theme: ThemeModel) {
   const xfrm = childByLocalName(spPr, 'xfrm');
   const noFill = Boolean(childByLocalName(spPr, 'noFill'));
   const line = childByLocalName(spPr, 'ln');
@@ -597,7 +599,7 @@ function readShapeVisualStyle(spPr: Element | null, theme: ThemeModel) {
   };
 }
 
-function readBorderRadius(spPr: Element | null) {
+function readBorderRadius(spPr: Element | null | undefined) {
   const geom = childByLocalName(spPr, 'prstGeom');
   if (attr(geom, 'prst') !== 'roundRect') return undefined;
   const adj = descendantByLocalName(geom, 'gd');
@@ -619,7 +621,7 @@ function colorWithOpacity(color: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-function readGradientFill(node: Element | null, theme: ThemeModel): GradientFill | undefined {
+function readGradientFill(node: Element | null | undefined, theme: ThemeModel): GradientFill | undefined {
   if (!node || !matchesLocalName(node, 'gradFill')) return undefined;
 
   const stops = childrenByLocalName(childByLocalName(node, 'gsLst'), 'gs')
@@ -648,7 +650,7 @@ function readGradientFill(node: Element | null, theme: ThemeModel): GradientFill
   };
 }
 
-function pickGradientColorNode(node: Element | null) {
+function pickGradientColorNode(node: Element | null | undefined) {
   if (!node || !matchesLocalName(node, 'gradFill')) return node;
   const stops = descendantsByLocalName(node, 'gs');
   for (let index = stops.length - 1; index >= 0; index -= 1) {
@@ -662,11 +664,11 @@ function pickGradientColorNode(node: Element | null) {
   return node;
 }
 
-function parsePaintNode(node: Element | null, theme: ThemeModel) {
+function parsePaintNode(node: Element | null | undefined, theme: ThemeModel) {
   return readGradientFill(node, theme) ?? parseColorNode(node, theme);
 }
 
-function parseColorNode(node: Element | null, theme: ThemeModel) {
+function parseColorNode(node: Element | null | undefined, theme: ThemeModel) {
   const sourceNode = pickGradientColorNode(node);
   if (!sourceNode) return undefined;
   const srgb = matchesLocalName(sourceNode, 'srgbClr') ? sourceNode : childByLocalName(sourceNode, 'srgbClr');
@@ -688,11 +690,11 @@ function parseColorNode(node: Element | null, theme: ThemeModel) {
   return raw;
 }
 
-function parseAlphaNode(node: Element | null) {
+function parseAlphaNode(node: Element | null | undefined) {
   return alphaToOpacity(attr(descendantByLocalName(pickGradientColorNode(node), 'alpha'), 'val'));
 }
 
-function parseRatioNode(node: Element | null) {
+function parseRatioNode(node: Element | null | undefined) {
   return alphaToRatio(attr(descendantByLocalName(node, 'alpha'), 'val'));
 }
 
@@ -1172,6 +1174,7 @@ function readLayout(
 }
 
 function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageState, theme: ThemeModel, tableStyles?: TableStyleMap) {
+  // 先读取 master，再读取它关联的 layout；后续 slide 会按 layout/master 继承占位符和默认样式。
   const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
   const masterDefinitions: MasterDefinition[] = [];
   const masterLayoutDefinitions: Record<string, LayoutDefinition[]> = {};
@@ -1225,6 +1228,7 @@ function parseTextElement(node: Element, index: number, theme: ThemeModel, inher
   const paragraphs: TextParagraph[] = childrenByLocalName(txBody, 'p').map((paragraphNode) => {
     const paragraphProps = childByLocalName(paragraphNode, 'pPr');
     const level = Number(attr(paragraphProps, 'lvl') ?? 0);
+    // 文本样式来源很多：母版占位符、layout、段落级别、run 自身，需要按 Office 优先级合并。
     const levelStyle = mergeTextStyles(
       inherited?.levels?.[level],
       localLevels[level],
@@ -1428,11 +1432,13 @@ function parseWpsWebExtensionChart(
     : undefined;
   const legendStyle = readWpsLegendStyle(chartStyle?.legend);
   const labelStyle = chartStyle?.label && typeof chartStyle.label === 'object' ? (chartStyle.label as Record<string, unknown>) : undefined;
-  const textLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.textLabel && typeof chartStyle.label.textLabel === 'object'
-    ? (chartStyle.label.textLabel as Record<string, unknown>)
+  const textLabel = labelStyle?.textLabel;
+  const numberLabel = labelStyle?.numberLabel;
+  const textLabelStyle = textLabel && typeof textLabel === 'object'
+    ? (textLabel as Record<string, unknown>)
     : undefined;
-  const numberLabelStyle = chartStyle?.label && typeof chartStyle.label === 'object' && chartStyle.label.numberLabel && typeof chartStyle.label.numberLabel === 'object'
-    ? (chartStyle.label.numberLabel as Record<string, unknown>)
+  const numberLabelStyle = numberLabel && typeof numberLabel === 'object'
+    ? (numberLabel as Record<string, unknown>)
     : undefined;
   const labelPosition = typeof labelStyle?.position === 'string'
     ? labelStyle.position
@@ -1801,8 +1807,8 @@ function parseTableElement(node: Element, index: number, theme: ThemeModel, tabl
     .map((col) => emuValue(col, 'w') ?? 0);
   const rowNodes = childrenByLocalName(tbl, 'tr');
   const rowHeights = rowNodes.map((rowNode) => emuValue(rowNode, 'h') ?? 0);
-  const rows = rowNodes.map((rowNode, rowIndex) =>
-    childrenByLocalName(rowNode, 'tc').map((cellNode, columnIndex) => {
+  const rows: TableCell[][] = rowNodes.map((rowNode, rowIndex) =>
+    childrenByLocalName(rowNode, 'tc').map((cellNode, columnIndex): TableCell => {
       const tcPr = childByLocalName(cellNode, 'tcPr');
       const fillNode = childByLocalName(tcPr, 'solidFill') ?? childByLocalName(tcPr, 'gradFill');
       const { text, paragraphs, firstRunStyle } = parseTableCellText(cellNode, theme);
@@ -1931,6 +1937,7 @@ function parseSlideXml(
 }
 
 export async function parsePptx(file: File): Promise<PptxDocument> {
+  // 解析顺序：包资源 -> 主题/表格样式 -> 母版/版式 -> 每页 slide，最终产出前端可直接渲染的模型。
   const entries = await loadOfficeEntries(file);
   const packageState = buildPackageState(entries);
   const presentationXml = readXml(entries, 'ppt/presentation.xml');
