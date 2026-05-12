@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
+import './index.less';
 import { XlsxSheetGrid } from './XlsxSheetGrid';
 import { XlsxSheetTabs } from './XlsxSheetTabs';
 
@@ -22,16 +23,7 @@ function XlsxViewerComponent({ workbook, activeSheetId, zoom, onSelectSheet }: X
   }
 
   return (
-    <div
-      style={{
-        minHeight: 'calc(100vh - 56px)',
-        height: 'calc(100vh - 56px)',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#f2f5f9',
-        overflow: 'hidden',
-      }}
-    >
+    <div className="oxv-xlsx-viewer">
       <XlsxSheetTabs workbook={workbook} activeSheet={activeSheet} onSelectSheet={onSelectSheet} />
       <XlsxSheetGrid sheet={activeSheet} zoom={zoom} />
     </div>
@@ -39,4 +31,3 @@ function XlsxViewerComponent({ workbook, activeSheetId, zoom, onSelectSheet }: X
 }
 
 export const XlsxViewer = memo(XlsxViewerComponent);
-

@@ -9,7 +9,7 @@ type DocxChartBlockProps = {
 
 function DocxChartBlockViewComponent({ block, zoom }: DocxChartBlockProps) {
   return (
-    <div style={{ margin: 0 }}>
+    <div className="oxv-docx-chart-block">
       <OfficeChartView chart={block.chart} width={block.width} height={block.height} zoom={zoom} />
     </div>
   );

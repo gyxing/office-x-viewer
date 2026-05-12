@@ -16,17 +16,13 @@ function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockPr
   const tableWidth = shouldFit ? '100%' : block.width ?? availableWidth ?? '100%';
 
   return (
-    <div style={{ margin: 0 }}>
+    <div className="oxv-docx-table-block">
       <table
+        className="oxv-docx-table-block__table"
         style={{
-          borderCollapse: 'collapse',
           width: tableWidth,
           marginLeft,
           marginRight,
-          tableLayout: 'fixed',
-          fontSize: 13,
-          color: '#000',
-          fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif',
         }}
       >
         {block.columns?.length ? (
@@ -35,10 +31,7 @@ function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockPr
               <col
                 key={`${block.id}-col-${index}`}
                 style={{
-                  width:
-                    shouldFit && totalColumns > 0
-                      ? `${(width / totalColumns) * 100}%`
-                      : width,
+                  width: shouldFit && totalColumns > 0 ? `${(width / totalColumns) * 100}%` : width,
                 }}
               />
             ))}
@@ -50,6 +43,7 @@ function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockPr
               {row.cells.map((cell) => (
                 <td
                   key={cell.id}
+                  className="oxv-docx-table-block__cell"
                   colSpan={cell.colSpan && cell.colSpan > 1 ? cell.colSpan : undefined}
                   style={{
                     borderTop: cell.borderTop ?? (cell.hasBorderTop ? 'none' : '1px solid #cfd7e3'),
@@ -66,13 +60,11 @@ function DocxTableBlockViewComponent({ block, availableWidth }: DocxTableBlockPr
                     wordBreak: cell.noWrap ? 'normal' : 'break-word',
                     overflowWrap: cell.noWrap ? 'normal' : 'anywhere',
                     whiteSpace: cell.noWrap ? 'nowrap' : undefined,
-                    color: '#000',
-                    fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif',
                   }}
                 >
                   {cell.blocks.map((item) =>
                     item.type === 'chart' ? (
-                      <div key={item.id} style={{ margin: '8px 0' }}>
+                      <div key={item.id} className="oxv-docx-table-block__chart">
                         <OfficeChartView chart={item.chart} width={item.width} height={item.height} zoom={100} />
                       </div>
                     ) : (

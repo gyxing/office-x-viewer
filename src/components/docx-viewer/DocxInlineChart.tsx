@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import type { DocxInline } from '../../services/docx/types';
 import { OfficeChartView } from '../office-chart/OfficeChartView';
 
@@ -8,8 +9,17 @@ type DocxInlineChartProps = {
 
 function DocxInlineChartComponent({ inline }: DocxInlineChartProps) {
   const chart = inline.chart;
+  const chartStyle = useMemo<CSSProperties>(
+    () =>
+      ({
+        '--oxv-docx-inline-chart-width': `${chart.width}px`,
+        '--oxv-docx-inline-chart-height': `${chart.height}px`,
+      }) as CSSProperties,
+    [chart.height, chart.width],
+  );
+
   return (
-    <span style={{ display: 'inline-block', width: chart.width, height: chart.height, verticalAlign: 'middle' }}>
+    <span className="oxv-docx-inline-chart" style={chartStyle}>
       <OfficeChartView chart={chart.chart} width={chart.width} height={chart.height} zoom={100} />
     </span>
   );

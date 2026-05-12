@@ -1,15 +1,13 @@
 import { Layout } from 'antd';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
+import type { DocDocument } from '../../services/doc/types';
 import type { DocxDocument } from '../../services/docx/types';
 import { detectPreviewKind, parseOfficeFile, type ParsedOfficeFile, type PreviewKind } from '../../services/officePreview';
 import type { PptxDocument } from '../../services/pptx/types';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
-import { DocxViewer } from '../docx-viewer/DocxViewer';
-import { PptxViewer } from '../pptx-viewer/PptxViewer';
-import { XlsxViewer } from '../xlsx-viewer/XlsxViewer';
-import { OfficeError } from './OfficeError';
-import { OfficeLoading } from './OfficeLoading';
+import './index.less';
+import { OfficePreviewStage } from './OfficePreviewStage';
 import { OfficeToolbar } from './OfficeToolbar';
 import { OFFICE_DEFAULT_ZOOM, OFFICE_MAX_ZOOM, OFFICE_MIN_ZOOM, OFFICE_ZOOM_STEP } from './shared/constants';
 
@@ -47,6 +45,7 @@ function OfficeViewerComponent({
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
   const [xlsxWorkbook, setXlsxWorkbook] = useState<XlsxWorkbook>();
   const [docxDocument, setDocxDocument] = useState<DocxDocument>();
+  const [docDocument, setDocDocument] = useState<DocDocument>();
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeSheetId, setActiveSheetId] = useState<string>();
   const [zoom, setZoom] = useState(defaultZoom);
@@ -67,6 +66,7 @@ function OfficeViewerComponent({
         setPptxDocument(parsed.kind === 'pptx' ? parsed.document : undefined);
         setXlsxWorkbook(parsed.kind === 'xlsx' ? parsed.workbook : undefined);
         setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
+        setDocDocument(parsed.kind === 'doc' ? parsed.document : undefined);
         setActiveSheetId(parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined);
         onFileParsed?.(parsed, file);
       } catch (nextError) {
@@ -91,8 +91,10 @@ function OfficeViewerComponent({
         ? Boolean(pptxDocument?.slides.length)
         : previewKind === 'xlsx'
           ? Boolean(xlsxWorkbook?.sheets.length)
-          : Boolean(docxDocument?.blocks.length),
-    [docxDocument, pptxDocument, previewKind, xlsxWorkbook],
+          : previewKind === 'docx'
+            ? Boolean(docxDocument?.blocks.length)
+            : Boolean(docDocument?.paragraphs.length),
+    [docDocument, docxDocument, pptxDocument, previewKind, xlsxWorkbook],
   );
 
   const canGoPreviousSlide = previewKind === 'pptx' && Boolean(pptxDocument?.slides.length) && activeIndex > 0;
@@ -122,7 +124,7 @@ function OfficeViewerComponent({
   }, [defaultZoom]);
 
   return (
-    <Layout className={className} style={{ minHeight: '100vh', background: '#eef1f6', ...style }}>
+    <Layout className={['oxv-office-viewer', className].filter(Boolean).join(' ')} style={style}>
       <OfficeToolbar
         fileName={fileName}
         previewKind={previewKind}
@@ -140,27 +142,24 @@ function OfficeViewerComponent({
         onZoomChange={setZoom}
         onResetZoom={handleResetZoom}
       />
-      <Content style={{ background: '#eef1f6', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
-        {error ? (
-          <OfficeError message={error} />
-        ) : loading ? (
-          <OfficeLoading />
-        ) : previewKind === 'xlsx' ? (
-          <XlsxViewer
-            workbook={xlsxWorkbook}
-            activeSheetId={activeSheetId}
-            zoom={zoom}
-            onSelectSheet={setActiveSheetId}
-          />
-        ) : previewKind === 'docx' ? (
-          <DocxViewer document={docxDocument} zoom={zoom} />
-        ) : (
-          <PptxViewer document={pptxDocument} activeIndex={activeIndex} zoom={zoom} onSelectSlide={setActiveIndex} />
-        )}
+      <Content className="oxv-office-viewer__content">
+        <OfficePreviewStage
+          loading={loading}
+          error={error}
+          previewKind={previewKind}
+          pptxDocument={pptxDocument}
+          xlsxWorkbook={xlsxWorkbook}
+          docxDocument={docxDocument}
+          docDocument={docDocument}
+          activeIndex={activeIndex}
+          activeSheetId={activeSheetId}
+          zoom={zoom}
+          onSelectSlide={setActiveIndex}
+          onSelectSheet={setActiveSheetId}
+        />
       </Content>
     </Layout>
   );
 }
 
 export const OfficeViewer = memo(OfficeViewerComponent);
-

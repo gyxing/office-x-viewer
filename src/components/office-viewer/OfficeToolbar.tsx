@@ -1,5 +1,3 @@
-import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
-import { memo } from 'react';
 import {
   FileExcelOutlined,
   FilePptOutlined,
@@ -10,6 +8,8 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
+import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
+import { memo, useMemo } from 'react';
 import type { PreviewKind } from '../../services/officePreview';
 import {
   OFFICE_DEFAULT_ZOOM,
@@ -39,14 +39,14 @@ type OfficeToolbarProps = {
 
 function getPreviewIcon(kind: PreviewKind) {
   if (kind === 'xlsx') return <FileExcelOutlined />;
-  if (kind === 'docx') return <FileWordOutlined />;
+  if (kind === 'docx' || kind === 'doc') return <FileWordOutlined />;
   return <FilePptOutlined />;
 }
 
 function OfficeToolbarComponent({
   fileName,
   previewKind,
-  uploadAccept = '.pptx,.xlsx,.docx',
+  uploadAccept = '.pptx,.xlsx,.docx,.doc',
   uploadLabel = '上传文件',
   zoom,
   hasDocument,
@@ -61,23 +61,11 @@ function OfficeToolbarComponent({
   onResetZoom,
   onFullscreen,
 }: OfficeToolbarProps) {
+  const zoomOptions = useMemo(() => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })), []);
+
   return (
-    <div
-      style={{
-        height: 56,
-        background: '#fff',
-        borderBottom: '1px solid #dde3ec',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 16,
-        padding: '0 16px',
-        position: 'sticky',
-        top: 0,
-        zIndex: 20,
-      }}
-    >
-      <Typography.Text strong ellipsis style={{ maxWidth: 360 }}>
+    <div className="oxv-office-toolbar">
+      <Typography.Text strong ellipsis className="oxv-office-toolbar__filename">
         {fileName}
       </Typography.Text>
       <Space size={8} wrap>
@@ -105,12 +93,7 @@ function OfficeToolbarComponent({
             onClick={onNextSlide}
           />
         </Tooltip>
-        <Select
-          value={zoom}
-          style={{ width: 104 }}
-          onChange={onZoomChange}
-          options={OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` }))}
-        />
+        <Select value={zoom} className="oxv-office-toolbar__zoom" onChange={onZoomChange} options={zoomOptions} />
         <Tooltip title="缩小">
           <Button
             icon={<ZoomOutOutlined />}
@@ -137,4 +120,3 @@ function OfficeToolbarComponent({
 }
 
 export const OfficeToolbar = memo(OfficeToolbarComponent);
-

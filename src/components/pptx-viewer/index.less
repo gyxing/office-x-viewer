@@ -1,0 +1,134 @@
+.oxv-pptx-viewer {
+  display: flex;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.oxv-pptx-viewer__sidebar {
+  position: sticky;
+  top: 56px;
+  display: flex;
+  flex: 0 0 292px;
+  flex-direction: column;
+  width: 292px;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #fff;
+  border-right: 1px solid #dde3ec;
+}
+
+.oxv-pptx-viewer__sidebar-header {
+  flex: 0 0 auto;
+  padding: 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.oxv-pptx-viewer__slide-count {
+  color: #667085;
+  font-size: 12px;
+}
+
+.oxv-pptx-viewer__thumbnail-list {
+  flex: 1 1 auto;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.oxv-pptx-viewer__thumbnail-button {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.oxv-pptx-viewer__viewport {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  padding: 32px;
+  overflow: auto;
+}
+
+.oxv-pptx-viewer__slide-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 100%;
+}
+
+.oxv-pptx-thumbnail {
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #dde3ec;
+  border-radius: 6px;
+}
+
+.oxv-pptx-thumbnail--active {
+  border-color: #2f6fed;
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.12);
+}
+
+.oxv-pptx-thumbnail__canvas {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.oxv-pptx-thumbnail__background {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.oxv-pptx-thumbnail__content {
+  width: 555.5556%;
+  height: 555.5556%;
+  pointer-events: none;
+  filter: saturate(0.98) contrast(0.98);
+  transform: scale(0.18);
+  transform-origin: top left;
+}
+
+.oxv-pptx-thumbnail__label {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.oxv-pptx-slide {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  transform-origin: top left;
+}
+
+.oxv-pptx-slide__background,
+.oxv-pptx-slide__elements {
+  position: absolute;
+  inset: 0;
+}
+
+.oxv-pptx-slide__background {
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.oxv-pptx-slide__elements {
+  z-index: 1;
+}
+
+.oxv-pptx-chart-frame {
+  position: absolute;
+}

@@ -1,0 +1,42 @@
+.oxv-office-viewer {
+  min-height: 100vh;
+  background: #eef1f6;
+}
+
+.oxv-office-viewer__content {
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.oxv-office-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 56px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #dde3ec;
+}
+
+.oxv-office-toolbar__filename {
+  max-width: 360px;
+}
+
+.oxv-office-toolbar__zoom {
+  width: 104px;
+}
+
+.oxv-office-loading {
+  display: grid;
+  place-items: center;
+  height: calc(100vh - 56px);
+}
+
+.oxv-office-error {
+  padding: 24px;
+}

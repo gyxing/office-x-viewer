@@ -1,0 +1,116 @@
+.oxv-docx-viewer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.oxv-docx-viewer__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 18px;
+  background: #fff;
+  border-bottom: 1px solid #dde3ec;
+}
+
+.oxv-docx-viewer__title {
+  max-width: 520px;
+}
+
+.oxv-docx-viewer__summary {
+  font-size: 12px;
+}
+
+.oxv-docx-viewer__scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.oxv-docx-page-frame {
+  margin: 0 auto;
+}
+
+.oxv-docx-page-frame__article {
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  letter-spacing: 0;
+  transform-origin: top left;
+}
+
+.oxv-docx-table-block {
+  margin: 0;
+}
+
+.oxv-docx-table-block__table {
+  table-layout: fixed;
+  color: #000;
+  font-size: 13px;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  border-collapse: collapse;
+}
+
+.oxv-docx-table-block__cell {
+  color: #000;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+}
+
+.oxv-docx-chart-block,
+.oxv-docx-table-block__chart {
+  margin: 0;
+}
+
+.oxv-docx-table-block__chart {
+  margin: 8px 0;
+}
+
+.oxv-docx-inline-image {
+  display: inline-block;
+  width: var(--oxv-docx-inline-image-width);
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+.oxv-docx-inline-chart,
+.oxv-docx-shape {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.oxv-docx-inline-chart {
+  width: var(--oxv-docx-inline-chart-width);
+  height: var(--oxv-docx-inline-chart-height);
+}
+
+.oxv-docx-shape {
+  position: relative;
+  width: var(--oxv-docx-shape-width);
+  height: var(--oxv-docx-shape-height);
+  margin: 8px 0;
+}
+
+.oxv-docx-shape__item {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.oxv-docx-shape__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}

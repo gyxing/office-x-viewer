@@ -7,7 +7,7 @@ type OfficeErrorProps = {
 
 function OfficeErrorComponent({ message }: OfficeErrorProps) {
   return (
-    <div style={{ padding: 24 }}>
+    <div className="oxv-office-error">
       <Alert type="error" showIcon message="预览失败" description={message} />
     </div>
   );

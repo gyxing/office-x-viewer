@@ -19,24 +19,17 @@ function XlsxSheetTabsComponent({ workbook, activeSheet, onSelectSheet }: XlsxSh
       })) ?? EMPTY_TABS,
     [workbook],
   );
+  const rangeText = activeSheet.range ?? `${activeSheet.rowCount} 行 x ${activeSheet.columnCount} 列`;
 
   return (
-    <div
-      style={{
-        flex: '0 0 auto',
-        background: '#fff',
-        borderBottom: '1px solid #dde3ec',
-        padding: '0 16px',
-        boxShadow: '0 1px 0 rgba(15, 23, 42, 0.04)',
-      }}
-    >
+    <div className="oxv-xlsx-sheet-tabs">
       <Tabs
         activeKey={activeSheet.id}
         onChange={onSelectSheet}
         items={tabItems}
         tabBarExtraContent={
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {activeSheet.range ?? `${activeSheet.rowCount} 行 x ${activeSheet.columnCount} 列`}
+          <Typography.Text type="secondary" className="oxv-xlsx-sheet-tabs__range">
+            {rangeText}
           </Typography.Text>
         }
       />
@@ -45,4 +38,3 @@ function XlsxSheetTabsComponent({ workbook, activeSheet, onSelectSheet }: XlsxSh
 }
 
 export const XlsxSheetTabs = memo(XlsxSheetTabsComponent);
-

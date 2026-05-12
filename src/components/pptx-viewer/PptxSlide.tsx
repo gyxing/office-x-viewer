@@ -1,11 +1,12 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import type { SlideElement, SlideModel } from '../../services/pptx/types';
+import { OfficeChartView } from '../office-chart/OfficeChartView';
+import { ImageRenderer } from './renderers/ImageRenderer';
 import { colorWithOpacity } from './renderers/paint';
 import { ShapeRenderer } from './renderers/ShapeRenderer';
-import { TextRenderer } from './renderers/TextRenderer';
-import { ImageRenderer } from './renderers/ImageRenderer';
 import { TableRenderer } from './renderers/TableRenderer';
-import { OfficeChartView } from '../office-chart/OfficeChartView';
+import { TextRenderer } from './renderers/TextRenderer';
 import { UnsupportedRenderer } from './renderers/UnsupportedRenderer';
 
 type PptxSlideProps = {
@@ -21,16 +22,18 @@ const ChartFrame = memo(function ChartFrame({
   element: Extract<SlideElement, { type: 'chart' }>;
   zoom: number;
 }) {
+  const frameStyle = useMemo<CSSProperties>(
+    () => ({
+      left: element.x,
+      top: element.y,
+      width: element.width,
+      height: element.height,
+    }),
+    [element.height, element.width, element.x, element.y],
+  );
+
   return (
-    <div
-      style={{
-        position: 'absolute',
-        left: element.x,
-        top: element.y,
-        width: element.width,
-        height: element.height,
-      }}
-    >
+    <div className="oxv-pptx-chart-frame" style={frameStyle}>
       <OfficeChartView chart={element.chart} width={element.width} height={element.height} zoom={zoom} />
     </div>
   );
@@ -39,34 +42,28 @@ const ChartFrame = memo(function ChartFrame({
 function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   const scale = zoom / 100;
   const slideRenderKey = renderKey ?? `slide-${slide.id}`;
+  const slideStyle = useMemo<CSSProperties>(
+    () => ({
+      width: slide.width,
+      height: slide.height,
+      minWidth: slide.width,
+      minHeight: slide.height,
+      transform: `scale(${scale})`,
+    }),
+    [scale, slide.height, slide.width],
+  );
+  const backgroundStyle = useMemo<CSSProperties>(
+    () => ({
+      background: colorWithOpacity(slide.background?.fill ?? '#fff', slide.background?.fillOpacity),
+      backgroundImage: slide.background?.imageRef ? `url(${slide.background.imageRef})` : undefined,
+    }),
+    [slide.background?.fill, slide.background?.fillOpacity, slide.background?.imageRef],
+  );
 
   return (
-    <div
-      style={{
-        width: slide.width,
-        height: slide.height,
-        minWidth: slide.width,
-        minHeight: slide.height,
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 12px 32px rgba(15, 23, 42, 0.16)',
-        transform: `scale(${scale})`,
-        transformOrigin: 'top left',
-        isolation: 'isolate',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: colorWithOpacity(slide.background?.fill ?? '#fff', slide.background?.fillOpacity),
-          backgroundImage: slide.background?.imageRef ? `url(${slide.background.imageRef})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          zIndex: 0,
-        }}
-      />
-      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+    <div className="oxv-pptx-slide" style={slideStyle}>
+      <div className="oxv-pptx-slide__background" style={backgroundStyle} />
+      <div className="oxv-pptx-slide__elements">
         {slide.elements.map((element) => {
           switch (element.type) {
             case 'text':

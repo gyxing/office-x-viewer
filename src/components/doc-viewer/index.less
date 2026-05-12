@@ -1,0 +1,152 @@
+.oxv-doc-viewer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.oxv-doc-viewer__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 18px;
+  background: #fff;
+  border-bottom: 1px solid #dde3ec;
+}
+
+.oxv-doc-viewer__title {
+  max-width: 520px;
+}
+
+.oxv-doc-viewer__summary {
+  font-size: 12px;
+}
+
+.oxv-doc-viewer__scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.oxv-doc-viewer__warning {
+  margin-bottom: 24px;
+}
+
+.oxv-doc-page-frame {
+  margin: 0 auto;
+}
+
+.oxv-doc-page-frame__article {
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  letter-spacing: 0;
+  transform-origin: top left;
+}
+
+.oxv-doc-paragraph {
+  margin: 0;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.oxv-doc-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  margin: 6px 0;
+}
+
+.oxv-doc-inline-image__img,
+.oxv-doc-image-layout__img,
+.oxv-doc-image-gallery__img {
+  display: block;
+  max-width: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.oxv-doc-table {
+  margin: 0 0 16px;
+  overflow-x: auto;
+}
+
+.oxv-doc-table__table {
+  table-layout: fixed;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.65;
+  border-collapse: collapse;
+}
+
+.oxv-doc-table__cell {
+  padding: 5px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.oxv-doc-list {
+  margin: 0 0 16px 20px;
+  padding: 0;
+  color: #111827;
+}
+
+.oxv-doc-list__item {
+  margin-bottom: 8px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.oxv-doc-image-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 6px 0 16px;
+}
+
+.oxv-doc-image-layout__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.oxv-doc-image-layout__figure {
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.oxv-doc-image-gallery {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.oxv-doc-image-gallery__title {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.oxv-doc-image-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.oxv-doc-image-gallery__figure {
+  margin: 0;
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.oxv-doc-image-gallery__img {
+  margin: 0 auto;
+}

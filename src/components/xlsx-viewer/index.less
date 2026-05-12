@@ -1,0 +1,91 @@
+.oxv-xlsx-viewer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  min-height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #f2f5f9;
+}
+
+.oxv-xlsx-sheet-tabs {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #dde3ec;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.oxv-xlsx-sheet-tabs__range {
+  font-size: 12px;
+}
+
+.oxv-xlsx-sheet-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  background: #e9edf3;
+  scrollbar-gutter: stable both-edges;
+}
+
+.oxv-xlsx-sheet-grid__canvas {
+  position: relative;
+}
+
+.oxv-xlsx-sheet-grid__floating-image {
+  position: absolute;
+  z-index: 4;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.oxv-xlsx-sheet-grid__floating-chart {
+  position: absolute;
+  z-index: 5;
+}
+
+.oxv-xlsx-sheet-table {
+  table-layout: fixed;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid #b9c4d2;
+  border-collapse: collapse;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.oxv-xlsx-sheet-table__row-header-col {
+  width: 48px;
+}
+
+.oxv-xlsx-sheet-table__corner,
+.oxv-xlsx-sheet-table__column-header,
+.oxv-xlsx-sheet-table__row-header {
+  color: #536174;
+  font-weight: 600;
+  font-size: 12px;
+  background: #e5ebf2;
+  border: 1px solid #c5cfdc;
+}
+
+.oxv-xlsx-sheet-table__corner,
+.oxv-xlsx-sheet-table__column-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 28px;
+}
+
+.oxv-xlsx-sheet-table__row-header {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 48px;
+}
+
+.oxv-xlsx-sheet-table__cell {
+  padding: 0 4px;
+  overflow: visible;
+  color: #1f2937;
+  line-height: 1.2;
+}

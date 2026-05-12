@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { OfficeChartModel } from '../../services/office/charts';
 import { buildOfficeChartOption } from '../../services/office/charts';
+import './index.less';
 
 type OfficeChartViewProps = {
   chart: OfficeChartModel;
@@ -23,22 +24,10 @@ function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeCh
   const displayWidth = width * (zoom / 100);
   const displayHeight = height * (zoom / 100);
 
-  const style = useMemo<CSSProperties>(
-    () => ({
-      width: '100%',
-      height: '100%',
-      minWidth: 0,
-      minHeight: 0,
-    }),
-    [],
-  );
-
   const outerStyle = useMemo<CSSProperties>(
     () => ({
-      position: 'relative',
       width: displayWidth,
       height: displayHeight,
-      overflow: 'hidden',
     }),
     [displayHeight, displayWidth],
   );
@@ -127,34 +116,17 @@ function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeCh
     }
 
     return (
-      <div style={outerStyle}>
-        <img
-          src={chart.snapshotSrc}
-          alt={chart.title ?? chart.mapRegion ?? ''}
-          style={{
-            display: 'block',
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-          }}
-        />
+      <div className="oxv-office-chart" style={outerStyle}>
+        <img className="oxv-office-chart__snapshot" src={chart.snapshotSrc} alt={chart.title ?? chart.mapRegion ?? ''} />
       </div>
     );
   }
 
   return (
-    <div style={outerStyle}>
-      <div ref={hostRef} style={style} />
+    <div className="oxv-office-chart" style={outerStyle}>
+      <div ref={hostRef} className="oxv-office-chart__host" />
       {!ready ? (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'grid',
-            placeItems: 'center',
-            background: 'rgba(255,255,255,0.75)',
-          }}
-        >
+        <div className="oxv-office-chart__loading">
           <Spin />
         </div>
       ) : null}
