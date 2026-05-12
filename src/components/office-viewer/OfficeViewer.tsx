@@ -1,5 +1,5 @@
 import { Layout } from 'antd';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { DocxDocument } from '../../services/docx/types';
 import type { PptxDocument } from '../../services/pptx/types';
 import type { PreviewKind } from '../../services/officePreview';
@@ -30,7 +30,7 @@ type OfficeViewerProps = {
   onUpload: (file: File) => void;
 };
 
-export function OfficeViewer({
+function OfficeViewerComponent({
   fileName,
   loading,
   error,
@@ -126,3 +126,4 @@ export function OfficeViewer({
   );
 }
 
+export const OfficeViewer = memo(OfficeViewerComponent);

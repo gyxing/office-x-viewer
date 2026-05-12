@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import type { UnsupportedElement } from '../../../services/pptx/types';
 
 type UnsupportedRendererProps = {
   element: UnsupportedElement;
 };
 
-export function UnsupportedRenderer({ element }: UnsupportedRendererProps) {
+function UnsupportedRendererComponent({ element }: UnsupportedRendererProps) {
   return (
     <div
       style={{
@@ -22,3 +23,5 @@ export function UnsupportedRenderer({ element }: UnsupportedRendererProps) {
     </div>
   );
 }
+
+export const UnsupportedRenderer = memo(UnsupportedRendererComponent);

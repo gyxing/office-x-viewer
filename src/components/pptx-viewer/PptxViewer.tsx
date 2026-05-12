@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { PptxDocument } from '../../services/pptx/types';
 import { OfficeEmpty } from '../office-viewer/OfficeEmpty';
 import { PptxThumbnail } from './PptxThumbnail';
@@ -11,7 +11,7 @@ type PptxViewerProps = {
   onSelectSlide: (index: number) => void;
 };
 
-export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxViewerProps) {
+function PptxViewerComponent({ document, activeIndex, zoom, onSelectSlide }: PptxViewerProps) {
   const viewportRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -84,10 +84,12 @@ export function PptxViewer({ document, activeIndex, zoom, onSelectSlide }: PptxV
             minHeight: '100%',
           }}
         >
-          {currentSlide ? <PptxSlide slide={currentSlide} zoom={zoom} /> : null}
+          {currentSlide ? <PptxSlide slide={currentSlide} zoom={zoom} renderKey={`slide-${currentSlide.id}`} /> : null}
         </div>
       </section>
     </div>
   );
 }
+
+export const PptxViewer = memo(PptxViewerComponent);
 

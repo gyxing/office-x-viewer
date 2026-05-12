@@ -1,6 +1,6 @@
 import { Empty, Spin } from 'antd';
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { OfficeChartModel } from '../../services/office/charts';
 import { buildOfficeChartOption } from '../../services/office/charts';
 
@@ -13,7 +13,7 @@ type OfficeChartViewProps = {
 
 const registeredMaps = new Set<string>();
 
-export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChartViewProps) {
+function OfficeChartViewComponent({ chart, width, height, zoom = 100 }: OfficeChartViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<import('echarts').EChartsType | null>(null);
   const echartsRef = useRef<typeof import('echarts') | null>(null);
@@ -161,3 +161,5 @@ export function OfficeChartView({ chart, width, height, zoom = 100 }: OfficeChar
     </div>
   );
 }
+
+export const OfficeChartView = memo(OfficeChartViewComponent);

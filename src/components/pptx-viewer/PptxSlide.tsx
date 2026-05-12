@@ -1,4 +1,6 @@
-import type { SlideModel } from '../../services/pptx/types';
+import { memo } from 'react';
+import type { SlideElement, SlideModel } from '../../services/pptx/types';
+import { colorWithOpacity } from './renderers/paint';
 import { ShapeRenderer } from './renderers/ShapeRenderer';
 import { TextRenderer } from './renderers/TextRenderer';
 import { ImageRenderer } from './renderers/ImageRenderer';
@@ -9,24 +11,14 @@ import { UnsupportedRenderer } from './renderers/UnsupportedRenderer';
 type PptxSlideProps = {
   slide: SlideModel;
   zoom: number;
+  renderKey?: string;
 };
 
-function colorWithOpacity(color?: string, opacity?: number) {
-  if (!color || opacity === undefined || opacity >= 1) return color;
-  const normalized = color.replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return color;
-  const value = Number.parseInt(normalized, 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
-
-function ChartFrame({
+const ChartFrame = memo(function ChartFrame({
   element,
   zoom,
 }: {
-  element: Extract<import('../../services/pptx/types').SlideElement, { type: 'chart' }>;
+  element: Extract<SlideElement, { type: 'chart' }>;
   zoom: number;
 }) {
   return (
@@ -42,10 +34,11 @@ function ChartFrame({
       <OfficeChartView chart={element.chart} width={element.width} height={element.height} zoom={zoom} />
     </div>
   );
-}
+});
 
-export function PptxSlide({ slide, zoom }: PptxSlideProps) {
+function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   const scale = zoom / 100;
+  const slideRenderKey = renderKey ?? `slide-${slide.id}`;
 
   return (
     <div
@@ -77,9 +70,9 @@ export function PptxSlide({ slide, zoom }: PptxSlideProps) {
         {slide.elements.map((element) => {
           switch (element.type) {
             case 'text':
-              return <TextRenderer key={element.id} element={element} />;
+              return <TextRenderer key={element.id} element={element} renderKey={slideRenderKey} />;
             case 'shape':
-              return <ShapeRenderer key={element.id} element={element} />;
+              return <ShapeRenderer key={element.id} element={element} renderKey={slideRenderKey} />;
             case 'image':
               return <ImageRenderer key={element.id} element={element} />;
             case 'table':
@@ -96,3 +89,5 @@ export function PptxSlide({ slide, zoom }: PptxSlideProps) {
     </div>
   );
 }
+
+export const PptxSlide = memo(PptxSlideComponent);

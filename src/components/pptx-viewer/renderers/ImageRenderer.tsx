@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import type { ImageElement } from '../../../services/pptx/types';
 
 type ImageRendererProps = {
   element: ImageElement;
 };
 
-export function ImageRenderer({ element }: ImageRendererProps) {
+function ImageRendererComponent({ element }: ImageRendererProps) {
   const left = element.crop?.left ?? 0;
   const top = element.crop?.top ?? 0;
   const right = element.crop?.right ?? 0;
@@ -48,3 +49,5 @@ export function ImageRenderer({ element }: ImageRendererProps) {
     </div>
   );
 }
+
+export const ImageRenderer = memo(ImageRendererComponent);

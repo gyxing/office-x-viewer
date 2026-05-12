@@ -1,4 +1,6 @@
+import { memo } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
+import { colorWithOpacity } from './renderers/paint';
 import { PptxSlide } from './PptxSlide';
 
 type PptxThumbnailProps = {
@@ -6,18 +8,7 @@ type PptxThumbnailProps = {
   active: boolean;
 };
 
-function colorWithOpacity(color?: string, opacity?: number) {
-  if (!color || opacity === undefined || opacity >= 1) return color;
-  const normalized = color.replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return color;
-  const value = Number.parseInt(normalized, 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
-
-export function PptxThumbnail({ slide, active }: PptxThumbnailProps) {
+function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
   const ratio = slide.width / slide.height;
 
   return (
@@ -60,10 +51,13 @@ export function PptxThumbnail({ slide, active }: PptxThumbnailProps) {
             filter: 'saturate(0.98) contrast(0.98)',
           }}
         >
-          <PptxSlide slide={slide} zoom={100} />
+          <PptxSlide slide={slide} zoom={100} renderKey={`thumb-${slide.id}`} />
         </div>
       </div>
       <div style={{ marginTop: 8, fontSize: 12, color: '#667085' }}>第 {slide.index} 页</div>
     </div>
   );
 }
+
+export const PptxThumbnail = memo(PptxThumbnailComponent);
+

@@ -1,10 +1,11 @@
 import { Alert } from 'antd';
+import { memo } from 'react';
 
 type OfficeErrorProps = {
   message: string;
 };
 
-export function OfficeError({ message }: OfficeErrorProps) {
+function OfficeErrorComponent({ message }: OfficeErrorProps) {
   return (
     <div style={{ padding: 24 }}>
       <Alert type="error" showIcon message="预览失败" description={message} />
@@ -12,3 +13,4 @@ export function OfficeError({ message }: OfficeErrorProps) {
   );
 }
 
+export const OfficeError = memo(OfficeErrorComponent);

@@ -1,9 +1,11 @@
-import { useId } from 'react';
+import { memo } from 'react';
 import type { ShapeElement } from '../../../services/pptx/types';
 import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
+import { buildRendererId } from './renderIds';
 
 type ShapeRendererProps = {
   element: ShapeElement;
+  renderKey: string;
 };
 
 function lineStyle(dash?: string) {
@@ -12,16 +14,16 @@ function lineStyle(dash?: string) {
   return 'dashed';
 }
 
-export function ShapeRenderer({ element }: ShapeRendererProps) {
-  const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+function ShapeRendererComponent({ element, renderKey }: ShapeRendererProps) {
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
-  const gradientId = isGradientFill ? `${instanceId}-${element.id}-fill-gradient` : undefined;
-  const radius = element.shape === 'ellipse'
-    ? '50%'
-    : element.shape === 'roundRect'
-      ? Math.min(element.width, element.height) * (element.borderRadius ?? 0.12)
-      : 0;
+  const gradientId = isGradientFill ? buildRendererId(renderKey, element.id, 'fill-gradient') : undefined;
+  const radius =
+    element.shape === 'ellipse'
+      ? '50%'
+      : element.shape === 'roundRect'
+        ? Math.min(element.width, element.height) * (element.borderRadius ?? 0.12)
+        : 0;
   const isLineShape = element.shape === 'line';
   const isVectorShape = Boolean(element.path);
   const shadow = element.shadow
@@ -102,3 +104,6 @@ export function ShapeRenderer({ element }: ShapeRendererProps) {
     </div>
   );
 }
+
+export const ShapeRenderer = memo(ShapeRendererComponent);
+

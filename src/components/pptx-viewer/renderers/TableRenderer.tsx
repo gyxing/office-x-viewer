@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { TableElement } from '../../../services/pptx/types';
 
 type TableRendererProps = {
@@ -15,7 +16,7 @@ function colorWithOpacity(color?: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-export function TableRenderer({ element }: TableRendererProps) {
+function TableRendererComponent({ element }: TableRendererProps) {
   const columnWidths = element.columnWidths ?? [];
   const rowHeights = element.rowHeights ?? [];
   return (
@@ -103,3 +104,5 @@ export function TableRenderer({ element }: TableRendererProps) {
     </table>
   );
 }
+
+export const TableRenderer = memo(TableRendererComponent);

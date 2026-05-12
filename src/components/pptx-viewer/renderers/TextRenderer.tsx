@@ -1,9 +1,11 @@
-import { useId } from 'react';
+import { memo } from 'react';
 import type { TextElement } from '../../../services/pptx/types';
 import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
+import { buildRendererId } from './renderIds';
 
 type TextRendererProps = {
   element: TextElement;
+  renderKey: string;
 };
 
 function shadowToCss(element: TextElement) {
@@ -31,13 +33,13 @@ function lineStyle(dash?: string) {
   return 'dashed';
 }
 
-export function TextRenderer({ element }: TextRendererProps) {
-  const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+function TextRendererComponent({ element, renderKey }: TextRendererProps) {
   const style = element.boxStyle ?? {};
   const isVectorShape = Boolean(element.path);
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
-  const gradientId = isGradientFill ? `${instanceId}-${element.id}-fill-gradient` : undefined;
+  const gradientId = isGradientFill ? buildRendererId(renderKey, element.id, 'fill-gradient') : undefined;
+
   return (
     <div
       style={{
@@ -179,3 +181,6 @@ export function TextRenderer({ element }: TextRendererProps) {
     </div>
   );
 }
+
+export const TextRenderer = memo(TextRendererComponent);
+

@@ -1,6 +1,5 @@
-import { loadPptxEntries } from './archive';
 import type { OfficeEntryMap } from '../office/archive';
-import { readXml } from '../office/archive';
+import { loadOfficeEntries, readXml } from '../office/archive';
 import {
   attr,
   childByLocalName,
@@ -1932,7 +1931,7 @@ function parseSlideXml(
 }
 
 export async function parsePptx(file: File): Promise<PptxDocument> {
-  const entries = await loadPptxEntries(file);
+  const entries = await loadOfficeEntries(file);
   const packageState = buildPackageState(entries);
   const presentationXml = readXml(entries, 'ppt/presentation.xml');
   const presentationDoc = parseXml(presentationXml);

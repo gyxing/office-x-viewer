@@ -1,4 +1,5 @@
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
+import { memo } from 'react';
 import {
   FileExcelOutlined,
   FilePptOutlined,
@@ -40,7 +41,7 @@ function getPreviewIcon(kind: PreviewKind) {
   return <FilePptOutlined />;
 }
 
-export function OfficeToolbar({
+function OfficeToolbarComponent({
   fileName,
   previewKind,
   zoom,
@@ -131,3 +132,4 @@ export function OfficeToolbar({
   );
 }
 
+export const OfficeToolbar = memo(OfficeToolbarComponent);
