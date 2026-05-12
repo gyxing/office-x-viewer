@@ -1,8 +1,9 @@
 import { Layout } from 'antd';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { DocxDocument } from '../../services/docx/types';
+import { detectPreviewKind, parseOfficeFile, type ParsedOfficeFile, type PreviewKind } from '../../services/officePreview';
 import type { PptxDocument } from '../../services/pptx/types';
-import type { PreviewKind } from '../../services/officePreview';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { DocxViewer } from '../docx-viewer/DocxViewer';
 import { PptxViewer } from '../pptx-viewer/PptxViewer';
@@ -10,42 +11,80 @@ import { XlsxViewer } from '../xlsx-viewer/XlsxViewer';
 import { OfficeError } from './OfficeError';
 import { OfficeLoading } from './OfficeLoading';
 import { OfficeToolbar } from './OfficeToolbar';
+import { OFFICE_DEFAULT_ZOOM, OFFICE_MAX_ZOOM, OFFICE_MIN_ZOOM, OFFICE_ZOOM_STEP } from './shared/constants';
 
 const { Content } = Layout;
 
 type OfficeViewerProps = {
-  fileName: string;
-  loading: boolean;
-  error?: string;
-  previewKind: PreviewKind;
-  pptxDocument?: PptxDocument;
-  xlsxWorkbook?: XlsxWorkbook;
-  docxDocument?: DocxDocument;
-  activeIndex: number;
-  activeSheetId?: string;
-  zoom: number;
-  onSelectSlide: (index: number) => void;
-  onSelectSheet: (sheetId: string) => void;
-  onZoomChange: (zoom: number) => void;
-  onUpload: (file: File) => void;
+  initialFile?: File;
+  defaultFileName?: string;
+  defaultPreviewKind?: PreviewKind;
+  defaultZoom?: number;
+  uploadAccept?: string;
+  uploadLabel?: string;
+  className?: string;
+  style?: CSSProperties;
+  onFileParsed?: (parsed: ParsedOfficeFile, file: File) => void;
+  onError?: (error: Error, file?: File) => void;
 };
 
 function OfficeViewerComponent({
-  fileName,
-  loading,
-  error,
-  previewKind,
-  pptxDocument,
-  xlsxWorkbook,
-  docxDocument,
-  activeIndex,
-  activeSheetId,
-  zoom,
-  onSelectSlide,
-  onSelectSheet,
-  onZoomChange,
-  onUpload,
+  initialFile,
+  defaultFileName = '未加载文件',
+  defaultPreviewKind = 'pptx',
+  defaultZoom = OFFICE_DEFAULT_ZOOM,
+  uploadAccept,
+  uploadLabel,
+  className,
+  style,
+  onFileParsed,
+  onError,
 }: OfficeViewerProps) {
+  const [fileName, setFileName] = useState(defaultFileName);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const [previewKind, setPreviewKind] = useState<PreviewKind>(defaultPreviewKind);
+  const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
+  const [xlsxWorkbook, setXlsxWorkbook] = useState<XlsxWorkbook>();
+  const [docxDocument, setDocxDocument] = useState<DocxDocument>();
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeSheetId, setActiveSheetId] = useState<string>();
+  const [zoom, setZoom] = useState(defaultZoom);
+
+  const handleUpload = useCallback(
+    async (file: File) => {
+      setLoading(true);
+      setError(undefined);
+
+      try {
+        const fileKind = detectPreviewKind(file.name);
+        setPreviewKind(fileKind);
+        setFileName(file.name);
+        setActiveIndex(0);
+        setZoom(defaultZoom);
+
+        const parsed = await parseOfficeFile(file);
+        setPptxDocument(parsed.kind === 'pptx' ? parsed.document : undefined);
+        setXlsxWorkbook(parsed.kind === 'xlsx' ? parsed.workbook : undefined);
+        setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
+        setActiveSheetId(parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined);
+        onFileParsed?.(parsed, file);
+      } catch (nextError) {
+        const normalizedError = nextError instanceof Error ? nextError : new Error('文件解析失败');
+        setError(normalizedError.message);
+        onError?.(normalizedError, file);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [defaultZoom, onError, onFileParsed],
+  );
+
+  useEffect(() => {
+    if (!initialFile) return;
+    void handleUpload(initialFile);
+  }, [handleUpload, initialFile]);
+
   const hasDocument = useMemo(
     () =>
       previewKind === 'pptx'
@@ -62,41 +101,43 @@ function OfficeViewerComponent({
     Boolean(pptxDocument?.slides.length) &&
     activeIndex < (pptxDocument?.slides.length ?? 1) - 1;
 
-  const handlePreviousSlide = () => {
-    onSelectSlide(Math.max(activeIndex - 1, 0));
-  };
+  const handlePreviousSlide = useCallback(() => {
+    setActiveIndex((value) => Math.max(value - 1, 0));
+  }, []);
 
-  const handleNextSlide = () => {
-    onSelectSlide(Math.min(activeIndex + 1, (pptxDocument?.slides.length ?? 1) - 1));
-  };
+  const handleNextSlide = useCallback(() => {
+    setActiveIndex((value) => Math.min(value + 1, (pptxDocument?.slides.length ?? 1) - 1));
+  }, [pptxDocument?.slides.length]);
 
-  const handleZoomOut = () => {
-    onZoomChange(Math.max(25, zoom - 25));
-  };
+  const handleZoomOut = useCallback(() => {
+    setZoom((value) => Math.max(OFFICE_MIN_ZOOM, value - OFFICE_ZOOM_STEP));
+  }, []);
 
-  const handleZoomIn = () => {
-    onZoomChange(Math.min(300, zoom + 25));
-  };
+  const handleZoomIn = useCallback(() => {
+    setZoom((value) => Math.min(OFFICE_MAX_ZOOM, value + OFFICE_ZOOM_STEP));
+  }, []);
 
-  const handleResetZoom = () => {
-    onZoomChange(100);
-  };
+  const handleResetZoom = useCallback(() => {
+    setZoom(defaultZoom);
+  }, [defaultZoom]);
 
   return (
-    <Layout style={{ minHeight: '100vh', background: '#eef1f6' }}>
+    <Layout className={className} style={{ minHeight: '100vh', background: '#eef1f6', ...style }}>
       <OfficeToolbar
         fileName={fileName}
         previewKind={previewKind}
+        uploadAccept={uploadAccept}
+        uploadLabel={uploadLabel}
         zoom={zoom}
         hasDocument={hasDocument}
         canGoPreviousSlide={canGoPreviousSlide}
         canGoNextSlide={canGoNextSlide}
-        onUpload={onUpload}
+        onUpload={handleUpload}
         onPreviousSlide={handlePreviousSlide}
         onNextSlide={handleNextSlide}
         onZoomOut={handleZoomOut}
         onZoomIn={handleZoomIn}
-        onZoomChange={onZoomChange}
+        onZoomChange={setZoom}
         onResetZoom={handleResetZoom}
       />
       <Content style={{ background: '#eef1f6', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
@@ -109,17 +150,12 @@ function OfficeViewerComponent({
             workbook={xlsxWorkbook}
             activeSheetId={activeSheetId}
             zoom={zoom}
-            onSelectSheet={onSelectSheet}
+            onSelectSheet={setActiveSheetId}
           />
         ) : previewKind === 'docx' ? (
           <DocxViewer document={docxDocument} zoom={zoom} />
         ) : (
-          <PptxViewer
-            document={pptxDocument}
-            activeIndex={activeIndex}
-            zoom={zoom}
-            onSelectSlide={onSelectSlide}
-          />
+          <PptxViewer document={pptxDocument} activeIndex={activeIndex} zoom={zoom} onSelectSlide={setActiveIndex} />
         )}
       </Content>
     </Layout>
@@ -127,3 +163,4 @@ function OfficeViewerComponent({
 }
 
 export const OfficeViewer = memo(OfficeViewerComponent);
+

@@ -21,6 +21,8 @@ import {
 type OfficeToolbarProps = {
   fileName: string;
   previewKind: PreviewKind;
+  uploadAccept?: string;
+  uploadLabel?: string;
   zoom: number;
   hasDocument: boolean;
   canGoPreviousSlide: boolean;
@@ -44,6 +46,8 @@ function getPreviewIcon(kind: PreviewKind) {
 function OfficeToolbarComponent({
   fileName,
   previewKind,
+  uploadAccept = '.pptx,.xlsx,.docx',
+  uploadLabel = '上传文件',
   zoom,
   hasDocument,
   canGoPreviousSlide,
@@ -78,14 +82,14 @@ function OfficeToolbarComponent({
       </Typography.Text>
       <Space size={8} wrap>
         <Upload
-          accept=".pptx,.xlsx,.docx"
+          accept={uploadAccept}
           showUploadList={false}
           beforeUpload={(file) => {
             void onUpload(file);
             return false;
           }}
         >
-          <Button icon={getPreviewIcon(previewKind)}>上传文件</Button>
+          <Button icon={getPreviewIcon(previewKind)}>{uploadLabel}</Button>
         </Upload>
         <Tooltip title="上一页">
           <Button
@@ -133,3 +137,4 @@ function OfficeToolbarComponent({
 }
 
 export const OfficeToolbar = memo(OfficeToolbarComponent);
+
