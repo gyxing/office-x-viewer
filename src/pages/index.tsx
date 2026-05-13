@@ -1,4 +1,4 @@
-import { OfficeViewer } from '../components/office-viewer';
+import { OfficeViewer } from '../office-viewer';
 
 export default function HomePage() {
   return <OfficeViewer />;
