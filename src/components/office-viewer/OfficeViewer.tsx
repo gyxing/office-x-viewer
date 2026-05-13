@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocDocument } from '../../services/doc/types';
 import type { DocxDocument } from '../../services/docx/types';
-import { detectPreviewKind, parseOfficeFile, type ParsedOfficeFile, type PreviewKind } from '../../services/officePreview';
+import { detectPreviewKind, parseOfficeFile, type ParsedOfficeFile, type PreviewKind } from '../../services/office/preview';
 import type { PptxDocument } from '../../services/pptx/types';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import './index.less';

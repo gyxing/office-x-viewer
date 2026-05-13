@@ -1,11 +1,11 @@
-import type { DocDocument } from './doc/types';
-import type { DocxDocument } from './docx/types';
-import type { PptxDocument } from './pptx/types';
-import type { XlsxWorkbook } from './xlsx/types';
-import { parseDoc } from './doc/parseDoc';
-import { parseDocx } from './docx/parseDocx';
-import { parsePptx } from './pptx/parsePptx';
-import { parseXlsx } from './xlsx/parseXlsx';
+import type { DocDocument } from '../doc/types';
+import type { DocxDocument } from '../docx/types';
+import type { PptxDocument } from '../pptx/types';
+import type { XlsxWorkbook } from '../xlsx/types';
+import { parseDoc } from '../doc/parseDoc';
+import { parseDocx } from '../docx/parseDocx';
+import { parsePptx } from '../pptx/parsePptx';
+import { parseXlsx } from '../xlsx/parseXlsx';
 
 // 组件入口只关心“文件类型 + 解析结果”，具体格式的包结构解析都收敛在各自 service 中。
 export type PreviewKind = 'pptx' | 'xlsx' | 'docx' | 'doc';

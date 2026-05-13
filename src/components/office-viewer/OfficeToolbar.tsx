@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
 import { memo, useMemo } from 'react';
-import type { PreviewKind } from '../../services/officePreview';
+import type { PreviewKind } from '../../services/office/preview';
 import {
   OFFICE_DEFAULT_ZOOM,
   OFFICE_MAX_ZOOM,
