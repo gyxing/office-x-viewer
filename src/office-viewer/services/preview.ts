@@ -12,6 +12,13 @@ export type ParsedOfficeFile =
   | { kind: 'docx'; document: DocxDocument }
   | { kind: 'doc'; document: DocDocument };
 
+export const SUPPORTED_OFFICE_EXTENSIONS = ['.pptx', '.xlsx', '.docx', '.doc'] as const;
+
+export function isSupportedOfficeFileName(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return SUPPORTED_OFFICE_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
 export function detectPreviewKind(fileName: string): PreviewKind {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.xlsx')) return 'xlsx';

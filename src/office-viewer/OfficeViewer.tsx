@@ -4,7 +4,13 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocDocument } from './services/doc/types';
 import type { DocxDocument } from './services/docx/types';
-import { detectPreviewKind, parseOfficeFile, type ParsedOfficeFile, type PreviewKind } from './services/preview';
+import {
+  detectPreviewKind,
+  isSupportedOfficeFileName,
+  parseOfficeFile,
+  type ParsedOfficeFile,
+  type PreviewKind,
+} from './services/preview';
 import type { PptxDocument } from './services/pptx/types';
 import type { XlsxWorkbook } from './services/xlsx/types';
 import './index.less';
@@ -14,26 +20,115 @@ import { OFFICE_DEFAULT_ZOOM, OFFICE_MAX_ZOOM, OFFICE_MIN_ZOOM, OFFICE_ZOOM_STEP
 
 const { Content } = Layout;
 
-type OfficeViewerProps = {
-  initialFile?: File;
+export type OfficeViewerUri = File | string | (() => Promise<File | Blob | string | Response>);
+
+export type OfficeViewerProps = {
+  uri?: OfficeViewerUri;
   defaultFileName?: string;
   defaultPreviewKind?: PreviewKind;
   defaultZoom?: number;
-  uploadAccept?: string;
-  uploadLabel?: string;
   className?: string;
   style?: CSSProperties;
   onFileParsed?: (parsed: ParsedOfficeFile, file: File) => void;
   onError?: (error: Error, file?: File) => void;
 };
 
+const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+};
+
+function getFileNameFromUrl(url: string) {
+  try {
+    const parsedUrl = new URL(url, window.location.href);
+    const lastSegment = parsedUrl.pathname.split('/').filter(Boolean).pop();
+    return lastSegment ? decodeURIComponent(lastSegment) : undefined;
+  } catch {
+    const path = url.split(/[?#]/)[0];
+    const lastSegment = path.split('/').filter(Boolean).pop();
+    return lastSegment ? decodeURIComponent(lastSegment) : undefined;
+  }
+}
+
+function getFileNameFromContentDisposition(contentDisposition: string | null) {
+  if (!contentDisposition) return undefined;
+
+  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) return decodeURIComponent(encodedMatch[1]);
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ? decodeURIComponent(plainMatch[1]) : undefined;
+}
+
+function getExtensionFromMimeType(mimeType: string) {
+  return OFFICE_MIME_EXTENSION_MAP[mimeType.split(';')[0]?.trim().toLowerCase()];
+}
+
+function hasFileExtension(fileName: string) {
+  return /\.[^./\\]+$/.test(fileName);
+}
+
+function ensureSupportedOfficeFile(file: File) {
+  if (!isSupportedOfficeFileName(file.name)) {
+    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX 或 DOC 文件');
+  }
+}
+
+function createFileFromBlob(blob: Blob, fileName?: string) {
+  if (fileName && hasFileExtension(fileName) && !isSupportedOfficeFileName(fileName)) {
+    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX 或 DOC 文件');
+  }
+
+  const extension = getExtensionFromMimeType(blob.type);
+  const inferredFileName =
+    fileName && isSupportedOfficeFileName(fileName) ? fileName : extension ? `office-file${extension}` : undefined;
+
+  if (!inferredFileName) {
+    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX 或 DOC 文件');
+  }
+
+  return new File([blob], inferredFileName, { type: blob.type });
+}
+
+async function createFileFromResponse(response: Response, fallbackFileName?: string) {
+  if (!response.ok) {
+    throw new Error(`文件下载失败：${response.status} ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const fileName =
+    getFileNameFromContentDisposition(response.headers.get('Content-Disposition')) || fallbackFileName;
+  return createFileFromBlob(blob, fileName);
+}
+
+async function downloadOfficeFile(url: string) {
+  const urlFileName = getFileNameFromUrl(url);
+  if (urlFileName && hasFileExtension(urlFileName) && !isSupportedOfficeFileName(urlFileName)) {
+    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX 或 DOC 文件');
+  }
+
+  const response = await fetch(url);
+  return createFileFromResponse(response, urlFileName);
+}
+
+async function normalizeOfficeUri(uri: OfficeViewerUri) {
+  const resolvedUri = typeof uri === 'function' ? await uri() : uri;
+
+  if (resolvedUri instanceof File) return resolvedUri;
+  if (resolvedUri instanceof Response) return createFileFromResponse(resolvedUri);
+  if (resolvedUri instanceof Blob) return createFileFromBlob(resolvedUri);
+  if (typeof resolvedUri === 'string') return downloadOfficeFile(resolvedUri);
+
+  throw new Error('uri 必须是 File、URL 字符串，或返回 File/Blob/URL/Response 的异步函数');
+}
+
 function OfficeViewerComponent({
-  initialFile,
+  uri,
   defaultFileName = '未加载文件',
   defaultPreviewKind = 'pptx',
   defaultZoom = OFFICE_DEFAULT_ZOOM,
-  uploadAccept,
-  uploadLabel,
   className,
   style,
   onFileParsed,
@@ -52,12 +147,13 @@ function OfficeViewerComponent({
   const [activeSheetId, setActiveSheetId] = useState<string>();
   const [zoom, setZoom] = useState(defaultZoom);
 
-  const handleUpload = useCallback(
+  const handleSelectFile = useCallback(
     async (file: File) => {
       setLoading(true);
       setError(undefined);
 
       try {
+        ensureSupportedOfficeFile(file);
         // 上传新文件时同步重置所有格式相关状态，防止上一份文档的页码/缩放/工作表残留到新文档。
         const fileKind = detectPreviewKind(file.name);
         setPreviewKind(fileKind);
@@ -85,9 +181,35 @@ function OfficeViewerComponent({
   );
 
   useEffect(() => {
-    if (!initialFile) return;
-    void handleUpload(initialFile);
-  }, [handleUpload, initialFile]);
+    if (!uri) return;
+
+    let ignore = false;
+
+    async function loadUri() {
+      setLoading(true);
+      setError(undefined);
+
+      let file: File | undefined;
+
+      try {
+        file = await normalizeOfficeUri(uri);
+        if (ignore) return;
+        await handleSelectFile(file);
+      } catch (nextError) {
+        if (ignore) return;
+        const normalizedError = nextError instanceof Error ? nextError : new Error('文件加载失败');
+        setError(normalizedError.message);
+        onError?.(normalizedError, file);
+        setLoading(false);
+      }
+    }
+
+    void loadUri();
+
+    return () => {
+      ignore = true;
+    };
+  }, [handleSelectFile, onError, uri]);
 
   const hasDocument = useMemo(
     () =>
@@ -133,13 +255,11 @@ function OfficeViewerComponent({
       <OfficeToolbar
         fileName={fileName}
         previewKind={previewKind}
-        uploadAccept={uploadAccept}
-        uploadLabel={uploadLabel}
         zoom={zoom}
         hasDocument={hasDocument}
         canGoPreviousSlide={canGoPreviousSlide}
         canGoNextSlide={canGoNextSlide}
-        onUpload={handleUpload}
+        onSelectFile={handleSelectFile}
         onPreviousSlide={handlePreviousSlide}
         onNextSlide={handleNextSlide}
         onZoomOut={handleZoomOut}
