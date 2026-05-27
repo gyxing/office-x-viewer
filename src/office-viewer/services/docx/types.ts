@@ -1,8 +1,15 @@
 export type DocxDocument = {
   title: string;
   page: DocxPage;
+  pages?: DocxPageContent[];
   blocks: DocxBlock[];
   images: DocxImage[];
+};
+
+export type DocxPageContent = {
+  id: string;
+  page: DocxPage;
+  blocks: DocxBlock[];
 };
 
 export type DocxPage = {
@@ -16,6 +23,18 @@ export type DocxPage = {
   borderRight?: string;
   borderBottom?: string;
   borderLeft?: string;
+};
+
+export type DocxPosition = {
+  left: number;
+  top: number;
+  relativeFromH?: 'page' | 'margin' | 'column' | 'character' | 'leftMargin' | 'rightMargin' | 'insideMargin' | 'outsideMargin';
+  relativeFromV?: 'page' | 'margin' | 'paragraph' | 'line' | 'topMargin' | 'bottomMargin' | 'insideMargin' | 'outsideMargin';
+  zIndex?: number;
+  behindDoc?: boolean;
+  rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
 };
 
 export type DocxBlock = DocxParagraphBlock | DocxTableBlock | DocxChartBlock;
@@ -46,6 +65,7 @@ export type DocxParagraphBlock = {
   paddingRight?: number;
   paddingBottom?: number;
   paddingLeft?: number;
+  position?: DocxPosition;
 };
 
 export type DocxTableBlock = {
@@ -55,6 +75,7 @@ export type DocxTableBlock = {
   width?: number;
   align?: 'left' | 'center' | 'right';
   columns?: number[];
+  position?: DocxPosition;
 };
 
 export type DocxChartBlock = {
@@ -63,6 +84,7 @@ export type DocxChartBlock = {
   chart: import('../../shared/ooxml/charts').OfficeChartModel;
   width: number;
   height: number;
+  position?: DocxPosition;
 };
 
 export type DocxTableRow = {
@@ -72,8 +94,9 @@ export type DocxTableRow = {
 
 export type DocxTableCell = {
   id: string;
-  blocks: Array<DocxParagraphBlock | DocxChartBlock>;
+  blocks: DocxBlock[];
   colSpan?: number;
+  rowSpan?: number;
   width?: number;
   verticalAlign?: 'top' | 'middle' | 'bottom';
   backgroundColor?: string;
@@ -123,6 +146,7 @@ export type DocxShape = {
   id: string;
   width: number;
   height: number;
+  position?: DocxPosition;
   items: DocxShapeItem[];
 };
 
@@ -146,6 +170,7 @@ export type DocxShapeItem = {
   strokeDasharray?: string;
   borderRadius?: number | string;
   textVerticalAlign?: 'top' | 'middle' | 'bottom';
+  blocks?: DocxBlock[];
   paragraphs?: DocxParagraphBlock[];
 };
 
@@ -156,6 +181,7 @@ export type DocxImage = {
   src: string;
   width: number;
   height: number;
+  position?: DocxPosition;
 };
 
 export type DocxTextStyle = {

@@ -23,6 +23,7 @@ import type {
   DocxImage,
   DocxInline,
   DocxPage,
+  DocxPageContent,
   DocxParagraphBlock,
   DocxShape,
   DocxShapeItem,
@@ -156,9 +157,13 @@ function readCssSize(style: string | undefined, name: string, scale?: number) {
   return vmlUnitToPx(raw);
 }
 
+function readCssPosition(style: string | undefined, name: 'left' | 'top') {
+  return readCssSize(style, `margin-${name}`) ?? readCssSize(style, name);
+}
+
 function readDocxLineHeight(spacingNode: Element | null | undefined) {
   const value = Number(attr(spacingNode, 'w:line') ?? attr(spacingNode, 'line'));
-  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isFinite(value) || value <= 0) return undefined;
   const rule = attr(spacingNode, 'w:lineRule') ?? attr(spacingNode, 'lineRule');
   if (rule === 'exact' || rule === 'atLeast') {
     return twipToPx(value);
@@ -174,8 +179,10 @@ function halfPointToPx(value?: string) {
 
 function parseHexColor(value?: string) {
   if (!value || value === 'auto' || value === 'none') return undefined;
-  if (!/^#?[0-9a-f]{6}$/i.test(value)) return undefined;
-  return value.startsWith('#') ? value : `#${value}`;
+  // 提取颜色值，忽略额外的信息（如 "#41719C [3204]"）
+  const match = value.match(/^#?([0-9a-f]{6})/i);
+  if (!match) return undefined;
+  return `#${match[1]}`;
 }
 
 function normalizeCssColor(value?: string) {
@@ -426,7 +433,9 @@ function readTextStyle(
 ): DocxTextStyle | undefined {
   if (!rPr) return undefined;
 
-  const color = parseHexColor(attr(childByLocalName(rPr, 'color'), 'w:val') ?? attr(childByLocalName(rPr, 'color'), 'val'));
+  const color =
+    readDrawingColor(childByLocalName(rPr, 'textFill'), theme) ??
+    parseHexColor(attr(childByLocalName(rPr, 'color'), 'w:val') ?? attr(childByLocalName(rPr, 'color'), 'val'));
   const style: DocxTextStyle = {
     bold: firstDefined(readOnOff(childByLocalName(rPr, 'b')), readOnOff(childByLocalName(rPr, 'bCs'))),
     italic: firstDefined(readOnOff(childByLocalName(rPr, 'i')), readOnOff(childByLocalName(rPr, 'iCs'))),
@@ -569,6 +578,32 @@ function resolveXmlTarget(target: string | undefined, packageState: DocxPackageS
   if (!target) return undefined;
   const normalized = target.replace(/^\.\.\//, '');
   return packageState.entries.get(normalized) ? normalized : target;
+}
+
+function readDrawingAnchorPosition(node: Element) {
+  const anchor = descendantByLocalName(node, 'anchor');
+  if (!anchor) return undefined;
+
+  const positionH = childByLocalName(anchor, 'positionH');
+  const positionV = childByLocalName(anchor, 'positionV');
+  const left = emuToPx(Number(textContent(childByLocalName(positionH, 'posOffset')).trim()));
+  const top = emuToPx(Number(textContent(childByLocalName(positionV, 'posOffset')).trim()));
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return undefined;
+
+  const relativeHeight = Number(attr(anchor, 'relativeHeight'));
+  const rotation = Number(attr(anchor, 'rotation'));
+
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    relativeFromH: attr(positionH, 'relativeFrom') as DocxPosition['relativeFromH'],
+    relativeFromV: attr(positionV, 'relativeFrom') as DocxPosition['relativeFromV'],
+    zIndex: Number.isFinite(relativeHeight) ? relativeHeight : undefined,
+    behindDoc: attr(anchor, 'behindDoc') === '1',
+    rotation: Number.isFinite(rotation) && rotation !== 0 ? rotation / 60000 : undefined,
+    flipH: attr(anchor, 'flipH') === '1' || undefined,
+    flipV: attr(anchor, 'flipV') === '1' || undefined,
+  };
 }
 
 function parseChartElement(node: Element, context: ParseContext): DocxChartBlock | undefined {
@@ -983,6 +1018,7 @@ function parseDrawingImage(drawingNode: Element, context: ParseContext): DocxIma
   const width = Math.max(1, Math.round(emuToPx(Number(attr(extent, 'cx') ?? 0))));
   const height = Math.max(1, Math.round(emuToPx(Number(attr(extent, 'cy') ?? 0))));
   const name = attr(docPr, 'name');
+  const position = readDrawingAnchorPosition(drawingNode);
   const image: DocxImage = {
     id: `docx-image-${context.imageIndex + 1}`,
     name,
@@ -990,6 +1026,7 @@ function parseDrawingImage(drawingNode: Element, context: ParseContext): DocxIma
     src,
     width,
     height,
+    position,
   };
   context.imageIndex += 1;
   context.images.push(image);
@@ -1136,8 +1173,8 @@ function parseWpgShapeItem(
   const id = `wpg-item-${context.shapeIndex + 1}-${index + 1}`;
   const fillColor = parseDrawingFillColor(spPr, context.theme);
   const stroke = parseDrawingLineStyle(spPr, context.theme);
-  const paragraphs = parseVmlTextBoxParagraphs(shapeNode, context, id).filter(
-    (paragraph) => paragraph.text || paragraph.inlines.length,
+  const blocks = parseVmlTextBoxParagraphs(shapeNode, context, id).filter(
+    (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
   );
   const path = kind === 'path'
     ? convertDrawingCustomGeometry(spPr, size.width, size.height)
@@ -1157,22 +1194,34 @@ function parseWpgShapeItem(
     ...stroke,
     borderRadius: kind === 'ellipse' ? '50%' : undefined,
     textVerticalAlign: readDrawingTextAnchor(shapeNode),
-    paragraphs: paragraphs.length ? paragraphs : undefined,
+    blocks: blocks.length ? blocks : undefined,
+    paragraphs: blocks.filter((block): block is DocxParagraphBlock => block.type === 'paragraph'),
   };
 }
 
 function parseWpgShape(node: Element, context: ParseContext): DocxShape | undefined {
   const group = descendantByLocalName(node, 'wgp');
-  if (!group) return undefined;
   const extent = descendantByLocalName(node, 'extent');
   const width = Math.round(emuToPx(Number(attr(extent, 'cx') ?? 0)));
   const height = Math.round(emuToPx(Number(attr(extent, 'cy') ?? 0)));
   if (!width || !height) return undefined;
 
-  const scale = readWpgScale(group, width, height);
-  const items = childrenByLocalName(group, 'wsp')
-    .map((shapeNode, index) => parseWpgShapeItem(shapeNode, index, context, scale))
-    .filter((item): item is DocxShapeItem => Boolean(item));
+  let items: DocxShapeItem[];
+  if (group) {
+    const scale = readWpgScale(group, width, height);
+    items = childrenByLocalName(group, 'wsp')
+      .map((shapeNode, index) => parseWpgShapeItem(shapeNode, index, context, scale))
+      .filter((item): item is DocxShapeItem => Boolean(item));
+  } else {
+    // 无 wgp 包装的独立 wsp，作为整个锚点尺寸的单元素形状处理
+    const graphicData = descendantByLocalName(node, 'graphicData');
+    const standaloneWsp = graphicData ? childByLocalName(graphicData, 'wsp') : undefined;
+    if (!standaloneWsp) return undefined;
+    const emuScale = { x: emuToPx(1), y: emuToPx(1) };
+    const item = parseWpgShapeItem(standaloneWsp, 0, context, emuScale);
+    if (!item) return undefined;
+    items = [item];
+  }
 
   if (!items.length) return undefined;
   context.shapeIndex += 1;
@@ -1180,6 +1229,7 @@ function parseWpgShape(node: Element, context: ParseContext): DocxShape | undefi
     id: `docx-shape-${context.shapeIndex}`,
     width,
     height,
+    position: readDrawingAnchorPosition(node),
     items,
   };
 }
@@ -1188,10 +1238,16 @@ function parseAlternateContentShape(node: Element, context: ParseContext): DocxS
   const choice = childByLocalName(node, 'Choice');
   const choiceDrawing = descendantByLocalName(choice, 'drawing');
   const choiceShape = choiceDrawing ? parseWpgShape(choiceDrawing, context) : undefined;
-  if (choiceShape) return choiceShape;
-
   const fallback = childByLocalName(node, 'Fallback');
   const fallbackPict = descendantByLocalName(fallback, 'pict');
+
+  if (choiceShape) {
+    return {
+      ...choiceShape,
+      position: readVmlShapeContainerPosition(fallbackPict) ?? choiceShape.position,
+    };
+  }
+
   return fallbackPict ? parseVmlShape(fallbackPict, context) : undefined;
 }
 
@@ -1203,6 +1259,16 @@ function parseVmlCoordSize(node: Element, renderedWidth: number, renderedHeight:
   return {
     x: Number.isFinite(coordWidth) && coordWidth > 0 ? renderedWidth / coordWidth : undefined,
     y: Number.isFinite(coordHeight) && coordHeight > 0 ? renderedHeight / coordHeight : undefined,
+  };
+}
+
+function readVmlCoordOrigin(node: Element | null | undefined) {
+  const [x, y] = (attr(node, 'coordorigin') ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()));
+  return {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
   };
 }
 
@@ -1226,6 +1292,35 @@ function parseVmlShapeSize(node: Element, scale?: { x?: number; y?: number }) {
   };
 }
 
+function readVmlShapePosition(node: Element | null | undefined) {
+  const style = attr(node, 'style');
+  const left = readCssPosition(style, 'left');
+  const top = readCssPosition(style, 'top');
+  const zIndex = Number(readCssDeclaration(style, 'z-index'));
+  const rotation = readCssDeclaration(style, 'rotation');
+  if (left === undefined && top === undefined) return undefined;
+  return {
+    left: Math.round(left ?? 0),
+    top: Math.round(top ?? 0),
+    relativeFromH: readCssDeclaration(style, 'mso-position-horizontal-relative') as DocxPosition['relativeFromH'],
+    relativeFromV: readCssDeclaration(style, 'mso-position-vertical-relative') as DocxPosition['relativeFromV'],
+    zIndex: Number.isFinite(zIndex) ? Math.max(0, zIndex) : undefined,
+    rotation: rotation ? Number(rotation) : undefined,
+    flipH: readCssDeclaration(style, 'flip') === 'x' || readCssDeclaration(style, 'flip') === 'xy' || undefined,
+    flipV: readCssDeclaration(style, 'flip') === 'y' || readCssDeclaration(style, 'flip') === 'xy' || undefined,
+  };
+}
+
+function readVmlShapeContainerPosition(node: Element | null | undefined) {
+  if (!node) return undefined;
+  const group = matchesLocalName(node, 'group') ? node : descendantByLocalName(node, 'group');
+  if (group) return readVmlShapePosition(group);
+  const shape = Array.from(node.children).find(
+    (child) => matchesLocalName(child, 'shape') || matchesLocalName(child, 'rect') || matchesLocalName(child, 'roundrect'),
+  );
+  return readVmlShapePosition(shape ?? node);
+}
+
 function vmlOnOff(value: string | undefined, fallback = true) {
   if (value === undefined) return fallback;
   return value !== 'f' && value !== 'false' && value !== '0' && value !== 'off';
@@ -1233,10 +1328,15 @@ function vmlOnOff(value: string | undefined, fallback = true) {
 
 function parseVmlStroke(shapeNode: Element) {
   const stroke = childByLocalName(shapeNode, 'stroke');
-  if (!vmlOnOff(attr(shapeNode, 'stroked'), true) || !vmlOnOff(attr(stroke, 'on'), true)) {
+  const stroked = attr(shapeNode, 'stroked');
+  const strokeOn = attr(stroke, 'on');
+
+  if (!vmlOnOff(stroked, true) || !vmlOnOff(strokeOn, true)) {
     return {};
   }
-  const color = normalizeCssColor(attr(stroke, 'color') ?? attr(shapeNode, 'strokecolor')) ?? '#000';
+
+  const rawColor = attr(stroke, 'color') ?? attr(shapeNode, 'strokecolor');
+  const color = normalizeCssColor(rawColor) ?? '#000';
   const width = vmlUnitToPx(attr(stroke, 'weight')) ?? 1;
   const dashstyle = attr(stroke, 'dashstyle');
   const strokeDasharray = dashstyle
@@ -1245,12 +1345,15 @@ function parseVmlStroke(shapeNode: Element) {
     .filter((item) => Number.isFinite(item) && item > 0)
     .map((item) => item * width)
     .join(' ');
-  return {
+
+  const result = {
     border: `${width}px solid ${color}`,
     strokeColor: color,
     strokeWidth: width,
     strokeDasharray: strokeDasharray || undefined,
   };
+
+  return result;
 }
 
 function parseVmlFillColor(shapeNode: Element) {
@@ -1316,9 +1419,7 @@ function convertVmlPathToSvgPath(path: string | undefined, width: number, height
 
 function parseVmlTextBoxParagraphs(shapeNode: Element, context: ParseContext, id: string) {
   const textBox = descendantByLocalName(shapeNode, 'txbxContent');
-  return childrenByLocalName(textBox, 'p').map((pNode, index) =>
-    parseParagraph(pNode, `${id}-p-${index + 1}`, context),
-  );
+  return readBlockChildren(textBox, id, context);
 }
 
 function hasVmlTextBox(shapeNode: Element) {
@@ -1330,8 +1431,11 @@ function parseVmlShapeItem(
   index: number,
   context: ParseContext,
   scale?: { x?: number; y?: number },
+  origin?: { x: number; y: number },
 ): DocxShapeItem | undefined {
   const size = parseVmlShapeSize(shapeNode, scale);
+  size.left -= (origin?.x ?? 0) * (scale?.x ?? 0);
+  size.top -= (origin?.y ?? 0) * (scale?.y ?? 0);
   if (!size.width || !size.height) return undefined;
 
   const isEllipse =
@@ -1341,8 +1445,8 @@ function parseVmlShapeItem(
   const stroke = parseVmlStroke(shapeNode);
   const path = convertVmlPathToSvgPath(attr(shapeNode, 'path'), size.width, size.height, shapeNode);
   const id = `vml-item-${context.shapeIndex + 1}-${index + 1}`;
-  const paragraphs = parseVmlTextBoxParagraphs(shapeNode, context, id).filter(
-    (paragraph) => paragraph.text || paragraph.inlines.length,
+  const blocks = parseVmlTextBoxParagraphs(shapeNode, context, id).filter(
+    (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
   );
 
   return {
@@ -1355,7 +1459,8 @@ function parseVmlShapeItem(
     ...stroke,
     borderRadius: isEllipse ? '50%' : matchesLocalName(shapeNode, 'roundrect') ? 8 : undefined,
     textVerticalAlign: readVmlTextAnchor(shapeNode),
-    paragraphs: paragraphs.length ? paragraphs : undefined,
+    blocks: blocks.length ? blocks : undefined,
+    paragraphs: blocks.filter((block): block is DocxParagraphBlock => block.type === 'paragraph'),
   };
 }
 
@@ -1364,6 +1469,9 @@ function parseVmlShape(node: Element, context: ParseContext): DocxShape | undefi
   const shapeRoot = group ?? node;
   const rootSize = parseVmlShapeSize(shapeRoot);
   const scale = parseVmlCoordSize(shapeRoot, rootSize.width, rootSize.height);
+  const origin = readVmlCoordOrigin(shapeRoot);
+
+  // 如果 shapeRoot 是 pict，查找其中的 shape 子元素
   const rawItems = Array.from(shapeRoot.children).filter(
     (child) =>
       (matchesLocalName(child, 'shape') || matchesLocalName(child, 'rect') || matchesLocalName(child, 'roundrect')) &&
@@ -1373,8 +1481,10 @@ function parseVmlShape(node: Element, context: ParseContext): DocxShape | undefi
         attr(child, 'stroked') !== 'f' ||
         hasVmlTextBox(child)),
   );
+
+  const position = group ? readVmlShapePosition(shapeRoot) : readVmlShapePosition(rawItems[0] ?? shapeRoot);
   const items = rawItems
-    .map((child, index) => parseVmlShapeItem(child, index, context, scale))
+    .map((child, index) => parseVmlShapeItem(child, index, context, scale, origin))
     .filter((item): item is DocxShapeItem => Boolean(item));
 
   if (!items.length) return undefined;
@@ -1387,6 +1497,7 @@ function parseVmlShape(node: Element, context: ParseContext): DocxShape | undefi
     id: `docx-shape-${context.shapeIndex}`,
     width: rootSize.width || maxRight,
     height: rootSize.height || maxBottom,
+    position,
     items,
   };
 }
@@ -1434,6 +1545,16 @@ function parseRun(runNode: Element, paragraphStyle: DocxTextStyle | undefined, c
       }
     }
     if (matchesLocalName(child, 'pict') || matchesLocalName(child, 'alternateContent')) {
+      if (matchesLocalName(child, 'alternateContent')) {
+        const drawing = descendantByLocalName(child, 'drawing');
+        const image = drawing && descendantByLocalName(drawing, 'pic') ? parseDrawingImage(drawing, context) : undefined;
+        if (image) {
+          const fallbackPict = descendantByLocalName(childByLocalName(child, 'Fallback'), 'pict');
+          const position = readVmlShapeContainerPosition(fallbackPict);
+          inlines.push({ type: 'image', image: position ? { ...image, position } : image });
+          return;
+        }
+      }
       const shape = matchesLocalName(child, 'pict') ? parseVmlShape(child, context) : parseAlternateContentShape(child, context);
       if (shape) {
         inlines.push({ type: 'shape', shape });
@@ -1567,6 +1688,18 @@ function readCellStyle(
   };
 }
 
+function readCellVerticalMerge(tcNode: Element) {
+  const tcPr = childByLocalName(tcNode, 'tcPr');
+  const vMerge = childByLocalName(tcPr, 'vMerge');
+  if (!vMerge) return undefined;
+  const value = readVal(vMerge);
+  return value === 'restart' ? 'restart' : 'continue';
+}
+
+function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
+  return readBlockChildren(cellNode, id, context);
+}
+
 function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTableBlock {
   const tblPr = childByLocalName(tblNode, 'tblPr');
   const tblW = childByLocalName(tblPr, 'tblW');
@@ -1575,27 +1708,81 @@ function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTa
     .map((col) => positiveTwipToPx(attr(col, 'w:w') ?? attr(col, 'w')))
     .filter((width): width is number => width !== undefined);
   const tableMargins = readCellMargins(tblPr);
-  return {
+  const result: DocxTableBlock = {
     id,
     type: 'table',
     width: positiveTwipToPx(attr(tblW, 'w:w') ?? attr(tblW, 'w')),
     align: align === 'center' || align === 'right' ? align : 'left',
     columns,
-    rows: childrenByLocalName(tblNode, 'tr').map((rowNode, rowIndex) => ({
-      id: `${id}-row-${rowIndex + 1}`,
-      cells: childrenByLocalName(rowNode, 'tc').map((cellNode, cellIndex): DocxTableCell => ({
-        id: `${id}-cell-${rowIndex + 1}-${cellIndex + 1}`,
-        ...readCellStyle(cellNode, tableMargins, context.theme),
-        blocks: childrenByLocalName(cellNode, 'p').flatMap((pNode, paragraphIndex) =>
-          readParagraphBlocks(pNode, `${id}-cell-${rowIndex + 1}-${cellIndex + 1}-p-${paragraphIndex + 1}`, context),
-        ),
-      })),
-    })),
+    rows: [],
   };
+
+  const activeVerticalMerges = new Map<number, { cell: DocxTableCell; colSpan: number }>();
+  result.rows = childrenByLocalName(tblNode, 'tr').map((rowNode, rowIndex) => {
+    let columnIndex = 0;
+    const cells: DocxTableCell[] = [];
+
+    childrenByLocalName(rowNode, 'tc').forEach((cellNode, cellIndex) => {
+      const verticalMerge = readCellVerticalMerge(cellNode);
+      const cellId = `${id}-cell-${rowIndex + 1}-${cellIndex + 1}`;
+      const cellStyle = readCellStyle(cellNode, tableMargins, context.theme);
+      const colSpan = cellStyle.colSpan && cellStyle.colSpan > 1 ? cellStyle.colSpan : 1;
+
+      if (verticalMerge === 'continue') {
+        const activeMerge = activeVerticalMerges.get(columnIndex);
+        if (activeMerge) {
+          activeMerge.cell.rowSpan = (activeMerge.cell.rowSpan ?? 1) + 1;
+          columnIndex += activeMerge.colSpan;
+          return;
+        }
+      } else {
+        activeVerticalMerges.delete(columnIndex);
+      }
+
+      const cell: DocxTableCell = {
+        id: cellId,
+        ...cellStyle,
+        blocks: readCellBlocks(cellNode, cellId, context),
+      };
+      cells.push(cell);
+
+      if (verticalMerge === 'restart') {
+        cell.rowSpan = 1;
+        activeVerticalMerges.set(columnIndex, { cell, colSpan });
+      }
+
+      columnIndex += colSpan;
+    });
+
+    return {
+      id: `${id}-row-${rowIndex + 1}`,
+      cells,
+    };
+  });
+
+  return result;
 }
 
-function readPage(bodyNode: Element | null | undefined): DocxPage {
-  const sectPr = childByLocalName(bodyNode, 'sectPr');
+function readBlockChildren(node: Element | null | undefined, id: string, context: ParseContext): DocxBlock[] {
+  const blocks: DocxBlock[] = [];
+  let paragraphIndex = 0;
+  let tableIndex = 0;
+
+  Array.from(node?.children ?? []).forEach((child) => {
+    if (matchesLocalName(child, 'p')) {
+      paragraphIndex += 1;
+      blocks.push(...readParagraphBlocks(child, `${id}-p-${paragraphIndex}`, context));
+    }
+    if (matchesLocalName(child, 'tbl')) {
+      tableIndex += 1;
+      blocks.push(parseTable(child, `${id}-table-${tableIndex}`, context));
+    }
+  });
+
+  return blocks;
+}
+
+function readSectionPage(sectPr: Element | null | undefined): DocxPage {
   const pgSz = childByLocalName(sectPr, 'pgSz');
   const pgMar = childByLocalName(sectPr, 'pgMar');
   const pgBorders = childByLocalName(sectPr, 'pgBorders');
@@ -1612,6 +1799,10 @@ function readPage(bodyNode: Element | null | undefined): DocxPage {
     borderBottom: readBorder(childByLocalName(pgBorders, 'bottom')),
     borderLeft: readBorder(childByLocalName(pgBorders, 'left')),
   };
+}
+
+function readPage(bodyNode: Element | null | undefined): DocxPage {
+  return readSectionPage(childByLocalName(bodyNode, 'sectPr'));
 }
 
 function markTitle(blocks: DocxBlock[]) {
@@ -1641,18 +1832,42 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
   };
 
   const blocks: DocxBlock[] = [];
+  const pages: DocxPageContent[] = [];
+  let currentPageBlocks: DocxBlock[] = [];
   Array.from(bodyNode?.children ?? []).forEach((child, index) => {
+    const childBlocks: DocxBlock[] = [];
     if (matchesLocalName(child, 'p')) {
-      blocks.push(...readParagraphBlocks(child, `p-${index + 1}`, context));
+      childBlocks.push(...readParagraphBlocks(child, `p-${index + 1}`, context));
     }
     if (matchesLocalName(child, 'tbl')) {
-      blocks.push(parseTable(child, `table-${index + 1}`, context));
+      childBlocks.push(parseTable(child, `table-${index + 1}`, context));
+    }
+    blocks.push(...childBlocks);
+    currentPageBlocks.push(...childBlocks);
+
+    const paragraphSectPr = matchesLocalName(child, 'p') ? childByLocalName(childByLocalName(child, 'pPr'), 'sectPr') : null;
+    if (paragraphSectPr) {
+      pages.push({
+        id: `docx-page-${pages.length + 1}`,
+        page: readSectionPage(paragraphSectPr),
+        blocks: currentPageBlocks,
+      });
+      currentPageBlocks = [];
     }
   });
 
+  if (currentPageBlocks.length) {
+    pages.push({
+      id: `docx-page-${pages.length + 1}`,
+      page: readPage(bodyNode),
+      blocks: currentPageBlocks,
+    });
+  }
+
   return {
     title: markTitle(blocks),
-    page: readPage(bodyNode),
+    page: pages[0]?.page ?? readPage(bodyNode),
+    pages,
     blocks,
     images: context.images,
   };

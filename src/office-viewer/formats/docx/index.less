@@ -34,7 +34,8 @@
 }
 
 .oxv-docx-page-frame {
-  margin: 0 auto;
+  margin: 0 auto 24px;
+  overflow: visible;
 }
 
 .oxv-docx-page-frame__article {
@@ -43,11 +44,25 @@
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
   font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
   letter-spacing: 0;
+  overflow: hidden;
   transform-origin: top left;
+
+  // 为定位元素提供定位上下文
+  position: relative;
+
+  // 确保定位元素不会被裁剪（在某些情况下）
+  &:has([style*="position: absolute"]) {
+    overflow: visible;
+  }
 }
 
 .oxv-docx-table-block {
   margin: 0;
+
+  &[style*="position: absolute"] {
+    display: block;
+    max-width: none;
+  }
 }
 
 .oxv-docx-table-block__table {
@@ -75,9 +90,14 @@
 .oxv-docx-inline-image {
   display: inline-block;
   width: var(--oxv-docx-inline-image-width);
+  height: var(--oxv-docx-inline-image-height);
   max-width: 100%;
-  height: auto;
   vertical-align: middle;
+  object-fit: contain;
+
+  &[style*="position: absolute"] {
+    max-width: none;
+  }
 }
 
 .oxv-docx-inline-chart,
@@ -97,6 +117,11 @@
   width: var(--oxv-docx-shape-width);
   height: var(--oxv-docx-shape-height);
   margin: 8px 0;
+
+  &[style*="position: absolute"] {
+    margin: 0;
+    max-width: none;
+  }
 }
 
 .oxv-docx-shape__item {
@@ -105,6 +130,10 @@
   display: flex;
   flex-direction: column;
   overflow: visible;
+
+  // 确保文本内容正确渲染
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .oxv-docx-shape__svg {

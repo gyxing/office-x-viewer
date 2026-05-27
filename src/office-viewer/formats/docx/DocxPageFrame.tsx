@@ -21,6 +21,13 @@ function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
   );
   const articleStyle = useMemo<CSSProperties>(
     () => ({
+      position: 'relative',
+      '--oxv-docx-page-width': `${page.width}px`,
+      '--oxv-docx-page-height': `${page.minHeight}px`,
+      '--oxv-docx-page-margin-top': `${page.marginTop}px`,
+      '--oxv-docx-page-margin-right': `${page.marginRight}px`,
+      '--oxv-docx-page-margin-bottom': `${page.marginBottom}px`,
+      '--oxv-docx-page-margin-left': `${page.marginLeft}px`,
       width: page.width,
       minHeight: page.minHeight,
       padding: `${page.marginTop}px ${page.marginRight}px ${page.marginBottom}px ${page.marginLeft}px`,
@@ -29,7 +36,7 @@ function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
       borderBottom: page.borderBottom,
       borderLeft: page.borderLeft,
       transform: `scale(${scale})`,
-    }),
+    }) as CSSProperties,
     [
       page.borderBottom,
       page.borderLeft,

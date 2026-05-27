@@ -1,4 +1,3 @@
-// DocxViewer 负责 DOCX 文档预览整体布局，包括顶部摘要栏和页面滚动区。
 import { Typography } from 'antd';
 import { memo, useMemo } from 'react';
 import type { DocxDocument } from '../../services/docx/types';
@@ -13,14 +12,21 @@ type DocxViewerProps = {
 };
 
 function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
-  const page = document?.page;
-  const contentWidth = page ? page.width - page.marginLeft - page.marginRight : undefined;
-  const summaryText = useMemo(
-    () => (document ? `${document.blocks.length} 个内容块 / ${document.images.length} 张图片` : ''),
+  const pages = useMemo(
+    () =>
+      document
+        ? document.pages?.length
+          ? document.pages
+          : [{ id: 'docx-page-1', page: document.page, blocks: document.blocks }]
+        : [],
     [document],
   );
+  const summaryText = useMemo(
+    () => (document ? `${pages.length} pages / ${document.blocks.length} blocks / ${document.images.length} images` : ''),
+    [document, pages.length],
+  );
 
-  if (!document?.blocks.length || !page) {
+  if (!document?.blocks.length || !pages.length) {
     return <OfficeEmpty kind="docx" />;
   }
 
@@ -35,11 +41,16 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
         </Typography.Text>
       </div>
       <div className="oxv-docx-viewer__scroller">
-        <DocxPageFrame page={page} zoom={zoom}>
-          {document.blocks.map((block) => (
-            <DocxBlockRenderer key={block.id} block={block} availableWidth={contentWidth} />
-          ))}
-        </DocxPageFrame>
+        {pages.map((pageItem) => {
+          const contentWidth = pageItem.page.width - pageItem.page.marginLeft - pageItem.page.marginRight;
+          return (
+            <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={zoom}>
+              {pageItem.blocks.map((block) => (
+                <DocxBlockRenderer key={block.id} block={block} availableWidth={contentWidth} />
+              ))}
+            </DocxPageFrame>
+          );
+        })}
       </div>
     </div>
   );

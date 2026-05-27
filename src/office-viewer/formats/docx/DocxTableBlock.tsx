@@ -3,6 +3,7 @@ import { memo } from 'react';
 import type { DocxTableBlock as DocxTableBlockModel } from '../../services/docx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
+import { calculatePositionStyle } from './positionUtils';
 
 type DocxTableBlockProps = {
   block: DocxTableBlockModel;
@@ -15,15 +16,22 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
   const totalColumns = block.columns?.reduce((sum, width) => sum + width, 0) ?? block.width ?? 0;
   const shouldFit = Boolean(availableWidth && block.width && block.width > availableWidth);
   const tableWidth = shouldFit ? '100%' : block.width ?? availableWidth ?? '100%';
+  const positionStyle = calculatePositionStyle(block.position);
 
   return (
-    <div className="oxv-docx-table-block">
+    <div
+      className="oxv-docx-table-block"
+      style={{
+        ...positionStyle,
+        maxWidth: block.position ? 'none' : undefined,
+      }}
+    >
       <table
         className="oxv-docx-table-block__table"
         style={{
           width: tableWidth,
-          marginLeft,
-          marginRight,
+          marginLeft: block.position ? 0 : marginLeft,
+          marginRight: block.position ? 0 : marginRight,
         }}
       >
         {block.columns?.length ? (
@@ -46,6 +54,7 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
                   key={cell.id}
                   className="oxv-docx-table-block__cell"
                   colSpan={cell.colSpan && cell.colSpan > 1 ? cell.colSpan : undefined}
+                  rowSpan={cell.rowSpan && cell.rowSpan > 1 ? cell.rowSpan : undefined}
                   style={{
                     borderTop: cell.borderTop ?? (cell.hasBorderTop ? 'none' : '1px solid #cfd7e3'),
                     borderRight: cell.borderRight ?? (cell.hasBorderRight ? 'none' : '1px solid #cfd7e3'),
@@ -68,8 +77,10 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
                       <div key={item.id} className="oxv-docx-table-block__chart">
                         <OfficeChartView chart={item.chart} width={item.width} height={item.height} zoom={100} />
                       </div>
+                    ) : item.type === 'table' ? (
+                      <DocxTableBlock key={item.id} block={item} availableWidth={cell.width ?? availableWidth} />
                     ) : (
-                      <DocxParagraph key={item.id} block={item} compact />
+                      <DocxParagraph key={item.id} block={item} compact asDiv />
                     ),
                   )}
                 </td>

@@ -2,7 +2,10 @@
 import { memo, useCallback, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocxInline } from '../../services/docx/types';
+import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
+import { DocxTableBlock } from './DocxTableBlock';
+import { calculatePositionStyle } from './positionUtils';
 
 type DocxShapeProps = {
   inline: Extract<DocxInline, { type: 'shape' }>;
@@ -10,13 +13,25 @@ type DocxShapeProps = {
 
 function DocxShapeComponent({ inline }: DocxShapeProps) {
   const shape = inline.shape;
+  const positionStyle = calculatePositionStyle(shape.position);
+
   const shapeStyle = useMemo<CSSProperties>(
-    () =>
-      ({
+    () => {
+      // 当 Shape 有定位时,给 z-index 添加一个小的偏移量,确保文本在图片上方
+      const adjustedZIndex = positionStyle.zIndex !== undefined
+        ? positionStyle.zIndex + 1
+        : undefined;
+
+      return {
         '--oxv-docx-shape-width': `${shape.width}px`,
         '--oxv-docx-shape-height': `${shape.height}px`,
-      }) as CSSProperties,
-    [shape.height, shape.width],
+        ...positionStyle,
+        zIndex: adjustedZIndex,
+        maxWidth: shape.position ? 'none' : undefined,
+        margin: shape.position ? 0 : undefined,
+      } as CSSProperties;
+    },
+    [positionStyle, shape.height, shape.position, shape.width],
   );
   const justifyContent = useCallback(
     (align?: 'top' | 'middle' | 'bottom') =>
@@ -71,9 +86,17 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
                 />
               </svg>
             ) : null}
-            {item.paragraphs?.map((paragraph) => (
-              <DocxParagraph key={paragraph.id} block={paragraph} compact />
-            ))}
+            {(item.blocks ?? item.paragraphs)?.map((block) =>
+              block.type === 'table' ? (
+                <DocxTableBlock key={block.id} block={block} availableWidth={item.width} />
+              ) : block.type === 'chart' ? (
+                <div key={block.id} className="oxv-docx-table-block__chart">
+                  <OfficeChartView chart={block.chart} width={block.width} height={block.height} zoom={100} />
+                </div>
+              ) : (
+                <DocxParagraph key={block.id} block={block} compact asDiv />
+              ),
+            )}
           </div>
         );
       })}

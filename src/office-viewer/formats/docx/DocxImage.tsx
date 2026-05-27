@@ -2,6 +2,7 @@
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DocxImageInline } from '../../services/docx/types';
+import { calculatePositionStyle } from './positionUtils';
 
 type DocxImageProps = {
   inline: DocxImageInline;
@@ -9,12 +10,17 @@ type DocxImageProps = {
 
 function DocxImageComponent({ inline }: DocxImageProps) {
   const image = inline.image;
+  const positionStyle = calculatePositionStyle(image.position);
+
   const imageStyle = useMemo<CSSProperties>(
     () =>
       ({
         '--oxv-docx-inline-image-width': `${image.width}px`,
+        '--oxv-docx-inline-image-height': `${image.height}px`,
+        ...positionStyle,
+        maxWidth: image.position ? 'none' : undefined,
       }) as CSSProperties,
-    [image.width],
+    [image.height, image.position, image.width, positionStyle],
   );
 
   return <img className="oxv-docx-inline-image" src={image.src} alt={image.alt ?? ''} title={image.name} style={imageStyle} />;
