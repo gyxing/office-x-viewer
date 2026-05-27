@@ -1089,12 +1089,21 @@ function parseDrawingXfrm(node: Element | null | undefined, scale?: { x?: number
 
 function readWpgScale(groupNode: Element, width: number, height: number) {
   const xfrm = descendantByLocalName(childByLocalName(groupNode, 'grpSpPr'), 'xfrm');
+  const chOff = childByLocalName(xfrm, 'chOff');
   const chExt = childByLocalName(xfrm, 'chExt');
   const rawWidth = Number(attr(chExt, 'cx') ?? 0);
   const rawHeight = Number(attr(chExt, 'cy') ?? 0);
+  const originX = Number(attr(chOff, 'x') ?? 0);
+  const originY = Number(attr(chOff, 'y') ?? 0);
   return {
-    x: Number.isFinite(rawWidth) && rawWidth > 0 ? width / rawWidth : 1,
-    y: Number.isFinite(rawHeight) && rawHeight > 0 ? height / rawHeight : 1,
+    scale: {
+      x: Number.isFinite(rawWidth) && rawWidth > 0 ? width / rawWidth : 1,
+      y: Number.isFinite(rawHeight) && rawHeight > 0 ? height / rawHeight : 1,
+    },
+    origin: {
+      x: Number.isFinite(originX) ? originX : 0,
+      y: Number.isFinite(originY) ? originY : 0,
+    },
   };
 }
 
@@ -1162,9 +1171,15 @@ function parseWpgShapeItem(
   index: number,
   context: ParseContext,
   scale: { x: number; y: number },
+  origin?: { x: number; y: number },
 ): DocxShapeItem | undefined {
   const spPr = childByLocalName(shapeNode, 'spPr');
-  const size = parseDrawingXfrm(spPr, scale);
+  const rawSize = parseDrawingXfrm(spPr, scale);
+  const size = {
+    ...rawSize,
+    left: rawSize.left - (origin?.x ?? 0) * (scale?.x ?? 1),
+    top: rawSize.top - (origin?.y ?? 0) * (scale?.y ?? 1),
+  };
   const kind = readDrawingShapeKind(spPr);
   const isLine = kind === 'line';
   if (!isLine && (!size.width || !size.height)) return undefined;
@@ -1208,9 +1223,9 @@ function parseWpgShape(node: Element, context: ParseContext): DocxShape | undefi
 
   let items: DocxShapeItem[];
   if (group) {
-    const scale = readWpgScale(group, width, height);
+    const { scale, origin } = readWpgScale(group, width, height);
     items = childrenByLocalName(group, 'wsp')
-      .map((shapeNode, index) => parseWpgShapeItem(shapeNode, index, context, scale))
+      .map((shapeNode, index) => parseWpgShapeItem(shapeNode, index, context, scale, origin))
       .filter((item): item is DocxShapeItem => Boolean(item));
   } else {
     // 无 wgp 包装的独立 wsp，作为整个锚点尺寸的单元素形状处理

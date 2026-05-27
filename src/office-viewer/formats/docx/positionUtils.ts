@@ -107,8 +107,8 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
   if (behindDoc) {
     calculatedZIndex = -1;
   } else if (zIndex !== undefined && Number.isFinite(zIndex)) {
-    // 确保 z-index 在合理范围内
-    calculatedZIndex = Math.max(-1, Math.min(999999, Math.round(zIndex)));
+    // 直接使用 relativeHeight 作为 z-index，CSS 支持到 2^31-1，OOXML 的值完全在范围内
+    calculatedZIndex = Math.max(-1, Math.round(zIndex));
   } else {
     // 未指定 z-index 时使用默认值 0
     calculatedZIndex = 0;
