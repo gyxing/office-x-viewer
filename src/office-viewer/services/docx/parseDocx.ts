@@ -1464,6 +1464,11 @@ function parseVmlShapeItem(
     (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
   );
 
+  // 读取 mso-fit-shape-to-text 属性（在 v:textbox 的 style 中）
+  const textboxNode = descendantByLocalName(shapeNode, 'textbox');
+  const textboxStyle = attr(textboxNode, 'style');
+  const fitShapeToText = readCssDeclaration(textboxStyle, 'mso-fit-shape-to-text') === 't';
+
   return {
     id,
     kind: isEllipse ? 'ellipse' : 'rect',
@@ -1474,6 +1479,7 @@ function parseVmlShapeItem(
     ...stroke,
     borderRadius: isEllipse ? '50%' : matchesLocalName(shapeNode, 'roundrect') ? 8 : undefined,
     textVerticalAlign: readVmlTextAnchor(shapeNode),
+    fitShapeToText: fitShapeToText || undefined,
     blocks: blocks.length ? blocks : undefined,
     paragraphs: blocks.filter((block): block is DocxParagraphBlock => block.type === 'paragraph'),
   };

@@ -51,6 +51,20 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
       {shape.items.map((item) => {
         const path = shapePath(item);
         const drawAsSvg = Boolean(path) || item.kind === 'line';
+
+        // 调试输出
+        if (item.blocks && item.blocks.length > 0) {
+          const firstText = item.blocks[0].type === 'paragraph' ? item.blocks[0].text : '';
+          if (firstText && (firstText.includes('班级') || firstText.includes('姓名'))) {
+            console.log('Shape item:', {
+              text: firstText,
+              fitShapeToText: item.fitShapeToText,
+              width: item.width,
+              height: item.height
+            });
+          }
+        }
+
         return (
           <div
             key={item.id}
@@ -58,8 +72,9 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
             style={{
               left: item.left,
               top: item.top,
-              width: item.width,
-              height: item.height,
+              ...(item.fitShapeToText
+                ? { minWidth: item.width, minHeight: item.height }
+                : { width: item.width, height: item.height }),
               justifyContent: justifyContent(item.textVerticalAlign),
               background: drawAsSvg ? undefined : item.fillColor,
               border: drawAsSvg ? undefined : item.border,

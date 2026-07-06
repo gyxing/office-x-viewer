@@ -144,7 +144,7 @@ export function debugPptxPackage(entries: OfficeEntryMap) {
 
 function readPresentationSize(xml: string) {
   const doc = parseXml(xml);
-  const sldSz = doc.querySelector('sldSz, p\\:sldSz');
+  const sldSz = descendantByLocalName(doc.documentElement, 'sldSz');
   const cx = Number(attr(sldSz, 'cx') ?? 12800000);
   const cy = Number(attr(sldSz, 'cy') ?? 7200000);
   return { width: emuToPx(cx), height: emuToPx(cy) };
@@ -169,7 +169,7 @@ function readTheme(xml: string): ThemeModel {
     folHlink: 'folHlink',
   };
 
-  const colorNode = doc.querySelector('clrScheme, a\\:clrScheme');
+  const colorNode = descendantByLocalName(doc.documentElement, 'clrScheme');
   descendantsByLocalName(colorNode, 'dk1')
     .concat(descendantsByLocalName(colorNode, 'lt1'))
     .concat(descendantsByLocalName(colorNode, 'dk2'))
@@ -192,7 +192,7 @@ function readTheme(xml: string): ThemeModel {
       if (value) colorScheme[node.localName] = value;
     });
 
-  const fontNode = doc.querySelector('fontScheme, a\\:fontScheme');
+  const fontNode = descendantByLocalName(doc.documentElement, 'fontScheme');
   ['majorFont', 'minorFont'].forEach((bucket) => {
     const node = childByLocalName(fontNode, bucket);
     if (!node) return;
@@ -1037,7 +1037,7 @@ function parseVisualTree(
     .sort((a, b) => Array.from(spTree?.children ?? []).indexOf(a) - Array.from(spTree?.children ?? []).indexOf(b));
 
   nodes.forEach((node, elementIndex) => {
-    if (node.localName === 'pic') {
+    if (matchesLocalName(node, 'pic')) {
       const chart = parseWpsWebExtensionChart(node, elementIndex, packageState, rels);
       if (chart) {
         chart.id = `${sourcePrefix}-${chart.id}`;
@@ -1050,7 +1050,7 @@ function parseVisualTree(
       return;
     }
 
-    if (node.localName === 'graphicFrame') {
+    if (matchesLocalName(node, 'graphicFrame')) {
       const chart = parseChartElement(node, elementIndex, theme, packageState, rels);
       const tbl = descendantByLocalName(node, 'tbl');
       const element = chart ?? (tbl ? parseTableElement(node, elementIndex, theme, tableStyles) : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
@@ -1059,7 +1059,7 @@ function parseVisualTree(
       return;
     }
 
-    if (node.localName === 'grpSp') {
+    if (matchesLocalName(node, 'grpSp')) {
       const groupElements = parseGroupElement(
         node,
         elementIndex,
@@ -1080,7 +1080,7 @@ function parseVisualTree(
       return;
     }
     const inherited = ph ? resolvePlaceholderStyle(ph, placeholderStyles) : undefined;
-    const hasText = Boolean(node.querySelector('txBody'));
+    const hasText = Boolean(childByLocalName(node, 'txBody'));
     const visualNode = childByLocalName(node, 'spPr');
     const visual = visualNode ? readShapeVisualStyle(visualNode, theme) : undefined;
     const hasVisibleVisual = Boolean(
@@ -1947,7 +1947,8 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
   const tableStyles = readTableStyles(readXml(entries, 'ppt/tableStyles.xml'), theme);
   const size = presentationXml ? readPresentationSize(presentationXml) : { width: 960, height: 540 };
   const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
-  const slideIds = childrenByLocalName(presentationDoc.querySelector('sldIdLst, p\\:sldIdLst'), 'sldId');
+  const slideIdList = descendantByLocalName(presentationDoc.documentElement, 'sldIdLst');
+  const slideIds = childrenByLocalName(slideIdList, 'sldId');
   const { masterDefinitions, masterLayoutDefinitions } = readPresentationLayouts(entries, packageState, theme, tableStyles);
   const layoutDefinitions = Object.values(masterLayoutDefinitions).flat();
   const slides: SlideModel[] = [];

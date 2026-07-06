@@ -95,9 +95,49 @@ export function descendantByLocalName(node: Element | null | undefined, localNam
   }
 
   const normalized = localName.toLowerCase();
-  return Array.from(node.getElementsByTagName('*')).find(
+
+  // 首先尝试标准方法
+  const standardMatch = Array.from(node.getElementsByTagName('*')).find(
     (child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized,
-  ) ?? null;
+  );
+
+  if (standardMatch) {
+    return standardMatch;
+  }
+
+  // 对于 VML 元素（如 v:textbox），尝试使用命名空间 URI 查找
+  // VML 命名空间: urn:schemas-microsoft-com:vml
+  // WordprocessingML 命名空间: http://schemas.microsoft.com/office/word/2003/wordml
+  const vmlNamespaces = [
+    'urn:schemas-microsoft-com:vml',
+    'http://schemas.microsoft.com/office/word/2003/wordml',
+  ];
+
+  for (const ns of vmlNamespaces) {
+    try {
+      const nsMatch = node.getElementsByTagNameNS(ns, normalized);
+      if (nsMatch && nsMatch.length > 0) {
+        return nsMatch[0];
+      }
+    } catch {
+      // 某些环境可能不支持 getElementsByTagNameNS，忽略错误
+    }
+  }
+
+  // 最后尝试通过完整的标签名查找（包括常见的 VML 前缀）
+  const prefixes = ['v:', 'w:', 'o:'];
+  for (const prefix of prefixes) {
+    try {
+      const prefixedMatch = node.getElementsByTagName(prefix + normalized);
+      if (prefixedMatch && prefixedMatch.length > 0) {
+        return prefixedMatch[0];
+      }
+    } catch {
+      // 忽略错误
+    }
+  }
+
+  return null;
 }
 
 export function descendantsByLocalName(node: Element | null | undefined, localName: string) {
@@ -106,7 +146,45 @@ export function descendantsByLocalName(node: Element | null | undefined, localNa
   }
 
   const normalized = localName.toLowerCase();
-  return Array.from(node.getElementsByTagName('*')).filter(
+
+  // 首先尝试标准方法
+  const standardMatches = Array.from(node.getElementsByTagName('*')).filter(
     (child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized,
   );
+
+  if (standardMatches.length > 0) {
+    return standardMatches;
+  }
+
+  // 对于 VML 元素，尝试使用命名空间 URI 查找
+  const vmlNamespaces = [
+    'urn:schemas-microsoft-com:vml',
+    'http://schemas.microsoft.com/office/word/2003/wordml',
+  ];
+
+  for (const ns of vmlNamespaces) {
+    try {
+      const nsMatches = Array.from(node.getElementsByTagNameNS(ns, normalized));
+      if (nsMatches.length > 0) {
+        return nsMatches;
+      }
+    } catch {
+      // 某些环境可能不支持 getElementsByTagNameNS，忽略错误
+    }
+  }
+
+  // 最后尝试通过完整的标签名查找（包括常见的 VML 前缀）
+  const prefixes = ['v:', 'w:', 'o:'];
+  for (const prefix of prefixes) {
+    try {
+      const prefixedMatches = Array.from(node.getElementsByTagName(prefix + normalized));
+      if (prefixedMatches.length > 0) {
+        return prefixedMatches;
+      }
+    } catch {
+      // 忽略错误
+    }
+  }
+
+  return [];
 }

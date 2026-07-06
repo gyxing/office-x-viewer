@@ -170,6 +170,7 @@ export type DocxShapeItem = {
   strokeDasharray?: string;
   borderRadius?: number | string;
   textVerticalAlign?: 'top' | 'middle' | 'bottom';
+  fitShapeToText?: boolean;
   blocks?: DocxBlock[];
   paragraphs?: DocxParagraphBlock[];
 };

@@ -107,8 +107,14 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
   if (behindDoc) {
     calculatedZIndex = -1;
   } else if (zIndex !== undefined && Number.isFinite(zIndex)) {
-    // 直接使用 relativeHeight 作为 z-index，CSS 支持到 2^31-1，OOXML 的值完全在范围内
-    calculatedZIndex = Math.max(-1, Math.round(zIndex));
+    // OOXML 的 relativeHeight 值可能非常大（如 251697153），需要标准化到合理范围
+    // 将大值映射到 0-999 范围，保持相对顺序
+    if (zIndex > 1000) {
+      // 使用对数缩放将大值压缩到合理范围
+      calculatedZIndex = Math.min(999, Math.floor(Math.log10(zIndex) * 100));
+    } else {
+      calculatedZIndex = Math.max(-1, Math.round(zIndex));
+    }
   } else {
     // 未指定 z-index 时使用默认值 0
     calculatedZIndex = 0;
