@@ -38,6 +38,7 @@ const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
   'application/msword': '.doc',
+  'application/wps-office.wps': '.wps',
 };
 
 function getFileNameFromUrl(url: string) {
@@ -72,13 +73,13 @@ function hasFileExtension(fileName: string) {
 
 function ensureSupportedOfficeFile(file: File) {
   if (!isSupportedOfficeFileName(file.name)) {
-    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX 或 DOC 文件');
+    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
   }
 }
 
 function createFileFromBlob(blob: Blob, fileName?: string) {
   if (fileName && hasFileExtension(fileName) && !isSupportedOfficeFileName(fileName)) {
-    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX 或 DOC 文件');
+    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
   }
 
   const extension = getExtensionFromMimeType(blob.type);
@@ -86,7 +87,7 @@ function createFileFromBlob(blob: Blob, fileName?: string) {
     fileName && isSupportedOfficeFileName(fileName) ? fileName : extension ? `office-file${extension}` : undefined;
 
   if (!inferredFileName) {
-    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX 或 DOC 文件');
+    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
   }
 
   return new File([blob], inferredFileName, { type: blob.type });
@@ -106,7 +107,7 @@ async function createFileFromResponse(response: Response, fallbackFileName?: str
 async function downloadOfficeFile(url: string) {
   const urlFileName = getFileNameFromUrl(url);
   if (urlFileName && hasFileExtension(urlFileName) && !isSupportedOfficeFileName(urlFileName)) {
-    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX 或 DOC 文件');
+    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
   }
 
   const response = await fetch(url);

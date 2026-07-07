@@ -12,7 +12,7 @@ export type ParsedOfficeFile =
   | { kind: 'docx'; document: DocxDocument }
   | { kind: 'doc'; document: DocDocument };
 
-export const SUPPORTED_OFFICE_EXTENSIONS = ['.pptx', '.xlsx', '.docx', '.doc'] as const;
+export const SUPPORTED_OFFICE_EXTENSIONS = ['.pptx', '.xlsx', '.docx', '.doc', '.wps'] as const;
 
 export function isSupportedOfficeFileName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
@@ -23,7 +23,7 @@ export function detectPreviewKind(fileName: string): PreviewKind {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.xlsx')) return 'xlsx';
   if (lower.endsWith('.docx')) return 'docx';
-  if (lower.endsWith('.doc')) return 'doc';
+  if (lower.endsWith('.doc') || lower.endsWith('.wps')) return 'doc';
   // 当前主场景是演示文稿预览，不认识的扩展名按 PPTX 走，方便示例文件缺少后缀时仍可尝试解析。
   return 'pptx';
 }

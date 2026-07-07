@@ -1774,8 +1774,8 @@ export async function parseDoc(file: File): Promise<DocDocument> {
 
   warnings.push(
     images.length
-      ? '\u5f53\u524d\u4e3a\u7eaf\u524d\u7aef DOC \u964d\u7ea7\u9884\u89c8\uff0c\u5df2\u63d0\u53d6\u5230\u6587\u6863\u5185\u56fe\u7247\uff0c\u4f46\u6682\u672a\u6062\u590d\u7cbe\u786e\u951a\u70b9\u3001\u590d\u6742\u6837\u5f0f\u548c\u5206\u9875\u3002'
-      : '\u5f53\u524d\u4e3a\u7eaf\u524d\u7aef DOC \u964d\u7ea7\u9884\u89c8\uff0c\u6682\u4e0d\u8fd8\u539f\u590d\u6742\u6837\u5f0f\u3001\u56fe\u7247\u951a\u70b9\u548c\u5206\u9875\u3002',
+      ? '当前为纯前端 DOC/WPS 降级预览，已提取到文档内图片，并按前端估算分页；暂未恢复精确锚点和复杂样式。'
+      : '当前为纯前端 DOC/WPS 降级预览，已按前端估算分页；暂不还原复杂样式和图片锚点。',
   );
   const document = buildDocDocument(file.name, blocks, warnings);
   document.images = images;

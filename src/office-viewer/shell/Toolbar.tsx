@@ -19,7 +19,7 @@ import {
   OFFICE_ZOOM_LEVELS,
 } from './constants';
 
-const OFFICE_FILE_ACCEPT = '.pptx,.xlsx,.docx,.doc';
+const OFFICE_FILE_ACCEPT = '.pptx,.xlsx,.docx,.doc,.wps';
 
 type OfficeToolbarProps = {
   fileName: string;

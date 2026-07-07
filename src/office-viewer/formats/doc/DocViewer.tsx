@@ -6,6 +6,7 @@ import { OfficeEmpty } from '../../shell/Empty';
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
+import { paginateDocBlocks } from './docRenderUtils';
 import './index.less';
 
 type DocViewerProps = {
@@ -42,12 +43,16 @@ function collectAnchoredImageIds(document?: DocDocument) {
 function DocViewerComponent({ document, zoom }: DocViewerProps) {
   const page = document?.page;
   const contentWidth = page ? page.width - page.marginLeft - page.marginRight : 0;
+  const pages = useMemo(
+    () => (document && page ? paginateDocBlocks(document.blocks, page, contentWidth, Boolean(document.warnings.length)) : []),
+    [contentWidth, document, page],
+  );
   const summaryText = useMemo(
     () =>
       document
-        ? `${document.paragraphs.length} 个文本段 / ${document.blocks.length} 个内容块 / ${document.images.length} 张图片`
+        ? `${pages.length} 页 / ${document.paragraphs.length} 个文本段 / ${document.blocks.length} 个内容块 / ${document.images.length} 张图片`
         : '',
-    [document],
+    [document, pages.length],
   );
   const anchoredImageIds = useMemo(() => collectAnchoredImageIds(document), [document]);
   const unanchoredImages = useMemo(
@@ -55,7 +60,7 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
     [anchoredImageIds, document],
   );
 
-  if (!document?.blocks.length || !page) {
+  if (!document?.blocks.length || !page || !pages.length) {
     return <OfficeEmpty kind="doc" />;
   }
 
@@ -70,15 +75,17 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
         </Typography.Text>
       </div>
       <div className="oxv-doc-viewer__scroller">
-        <DocPageFrame page={page} zoom={zoom}>
-          {document.warnings.length ? (
-            <div className="oxv-doc-viewer__warning">
-              <Alert type="warning" showIcon message="DOC 预览说明" description={document.warnings.join(' ')} />
-            </div>
-          ) : null}
-          <DocContentRenderer blocks={document.blocks} contentWidth={contentWidth} />
-          <DocImageGallery images={unanchoredImages} />
-        </DocPageFrame>
+        {pages.map((docPage, pageIndex) => (
+          <DocPageFrame key={docPage.id} page={page} zoom={zoom}>
+            {pageIndex === 0 && document.warnings.length ? (
+              <div className="oxv-doc-viewer__warning">
+                <Alert type="warning" showIcon message="DOC/WPS 预览说明" description={document.warnings.join(' ')} />
+              </div>
+            ) : null}
+            <DocContentRenderer blocks={docPage.blocks} contentWidth={contentWidth} />
+            {pageIndex === pages.length - 1 ? <DocImageGallery images={unanchoredImages} /> : null}
+          </DocPageFrame>
+        ))}
       </div>
     </div>
   );
