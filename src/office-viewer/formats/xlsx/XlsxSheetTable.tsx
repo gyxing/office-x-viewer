@@ -57,6 +57,9 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
             {row.cells.map((cell) => {
               if (cell.hiddenByMerge) return null;
               const style = cell.style ?? {};
+              const fallbackBorder = style.border
+                ? `${style.borderWidth ?? 1}px solid ${style.borderColor ?? '#b9c2d0'}`
+                : '1px solid #d9e0ea';
               return (
                 <td
                   key={cell.ref}
@@ -66,10 +69,10 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
                   title={cell.value}
                   style={{
                     ...cellStyleCache.get(cell.ref),
-                    borderTop: style.borderTop ?? '1px solid #d9e0ea',
-                    borderRight: style.borderRight ?? '1px solid #d9e0ea',
-                    borderBottom: style.borderBottom ?? '1px solid #d9e0ea',
-                    borderLeft: style.borderLeft ?? '1px solid #d9e0ea',
+                    borderTop: style.borderTop ?? fallbackBorder,
+                    borderRight: style.borderRight ?? fallbackBorder,
+                    borderBottom: style.borderBottom ?? fallbackBorder,
+                    borderLeft: style.borderLeft ?? fallbackBorder,
                   }}
                 >
                   {cell.value}

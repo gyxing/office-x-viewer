@@ -17,16 +17,11 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
 
   const shapeStyle = useMemo<CSSProperties>(
     () => {
-      // 当 Shape 有定位时,给 z-index 添加一个小的偏移量,确保文本在图片上方
-      const adjustedZIndex = positionStyle.zIndex !== undefined
-        ? positionStyle.zIndex + 1
-        : undefined;
-
       return {
         '--oxv-docx-shape-width': `${shape.width}px`,
         '--oxv-docx-shape-height': `${shape.height}px`,
         ...positionStyle,
-        zIndex: adjustedZIndex,
+        zIndex: positionStyle.zIndex,
         maxWidth: shape.position ? 'none' : undefined,
         margin: shape.position ? 0 : undefined,
       } as CSSProperties;
@@ -52,19 +47,6 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
         const path = shapePath(item);
         const drawAsSvg = Boolean(path) || item.kind === 'line';
 
-        // 调试输出
-        if (item.blocks && item.blocks.length > 0) {
-          const firstText = item.blocks[0].type === 'paragraph' ? item.blocks[0].text : '';
-          if (firstText && (firstText.includes('班级') || firstText.includes('姓名'))) {
-            console.log('Shape item:', {
-              text: firstText,
-              fitShapeToText: item.fitShapeToText,
-              width: item.width,
-              height: item.height
-            });
-          }
-        }
-
         return (
           <div
             key={item.id}
@@ -77,12 +59,18 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
                 : { width: item.width, height: item.height }),
               justifyContent: justifyContent(item.textVerticalAlign),
               background: drawAsSvg ? undefined : item.fillColor,
+              backgroundImage: item.imageSrc ? `url(${item.imageSrc})` : undefined,
+              backgroundSize: item.imageSrc ? '100% 100%' : undefined,
+              backgroundRepeat: item.imageSrc ? 'no-repeat' : undefined,
               border: drawAsSvg ? undefined : item.border,
               borderRadius: item.borderRadius,
               paddingTop: item.paddingTop,
               paddingRight: item.paddingRight,
               paddingBottom: item.paddingBottom,
               paddingLeft: item.paddingLeft,
+              whiteSpace: item.noWrap ? 'nowrap' : undefined,
+              overflowWrap: item.noWrap ? 'normal' : undefined,
+              wordBreak: item.noWrap ? 'normal' : undefined,
             }}
           >
             {path ? (

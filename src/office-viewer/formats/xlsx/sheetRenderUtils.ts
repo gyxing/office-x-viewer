@@ -18,9 +18,6 @@ export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
     whiteSpace: style.wrapText ? 'pre-wrap' : 'nowrap',
     overflowWrap: style.wrapText ? 'anywhere' : undefined,
     wordBreak: style.wrapText ? 'break-word' : undefined,
-    borderColor: style.borderColor ?? (style.border ? '#b9c2d0' : '#d9e0ea'),
-    borderStyle: style.border ? 'solid' : undefined,
-    borderWidth: style.borderWidth ? `${style.borderWidth}px` : undefined,
   };
   return Object.fromEntries(Object.entries(css).filter(([, value]) => value !== undefined)) as CSSProperties;
 }

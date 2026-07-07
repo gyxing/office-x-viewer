@@ -1,5 +1,7 @@
 import type { DocxPosition } from '../../services/docx/types';
 
+const CSS_MAX_Z_INDEX = 2147483647;
+
 /**
  * 安全地格式化数值为像素字符串
  */
@@ -74,6 +76,8 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
   } else if (relativeFromV === 'line') {
     // 相对于行：从当前行顶部开始
     calculatedTop = safePx(safeTop);
+  } else if (relativeFromV === 'text') {
+    calculatedTop = `calc(var(--oxv-docx-page-margin-top, 0px) + ${safePx(safeTop)})`;
   } else if (relativeFromV === 'topMargin') {
     // 相对于上边距：从页面顶部开始，减去上边距
     calculatedTop = `calc(${safePx(safeTop)} - var(--oxv-docx-page-margin-top, 0px))`;
@@ -102,22 +106,16 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
     transforms.push('scaleY(-1)');
   }
 
-  // 计算 z-index：behindDoc 的元素应该在文本后面
+  // 计算 z-index：behindDoc 元素应在纸张之上、正文之下；负数会被页面白底盖住。
   let calculatedZIndex: number | undefined;
   if (behindDoc) {
-    calculatedZIndex = -1;
-  } else if (zIndex !== undefined && Number.isFinite(zIndex)) {
-    // OOXML 的 relativeHeight 值可能非常大（如 251697153），需要标准化到合理范围
-    // 将大值映射到 0-999 范围，保持相对顺序
-    if (zIndex > 1000) {
-      // 使用对数缩放将大值压缩到合理范围
-      calculatedZIndex = Math.min(999, Math.floor(Math.log10(zIndex) * 100));
-    } else {
-      calculatedZIndex = Math.max(-1, Math.round(zIndex));
-    }
-  } else {
-    // 未指定 z-index 时使用默认值 0
     calculatedZIndex = 0;
+  } else if (zIndex !== undefined && Number.isFinite(zIndex)) {
+    // OOXML 的 relativeHeight 本身表达层叠顺序，压缩会抹平相邻对象的前后关系。
+    calculatedZIndex = Math.min(CSS_MAX_Z_INDEX, Math.max(1, Math.round(zIndex)));
+  } else {
+    // 未指定 z-index 的浮动对象默认放在正文之上，但低于明确指定前景层级的对象。
+    calculatedZIndex = 2;
   }
 
   return {

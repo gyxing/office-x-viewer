@@ -11,11 +11,16 @@ type DocxTableBlockProps = {
 };
 
 function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps) {
+  const defaultVerticalPadding = block.insideShape ? 2 : 0;
+  const resolveVerticalPadding = (value: number | undefined) =>
+    block.insideShape ? Math.max(value ?? 0, defaultVerticalPadding) : value ?? 0;
   const marginLeft = block.align === 'center' ? 'auto' : block.align === 'right' ? 'auto' : 0;
   const marginRight = block.align === 'center' ? 'auto' : block.align === 'right' ? 0 : 'auto';
   const totalColumns = block.columns?.reduce((sum, width) => sum + width, 0) ?? block.width ?? 0;
-  const shouldFit = Boolean(availableWidth && block.width && block.width > availableWidth);
-  const tableWidth = shouldFit ? '100%' : block.width ?? availableWidth ?? '100%';
+  const shouldFit = Boolean(!block.position && availableWidth && block.width && block.width > availableWidth * 1.1);
+  const tableWidth = block.position ? block.width ?? availableWidth ?? '100%' : shouldFit ? '100%' : block.width ?? availableWidth ?? '100%';
+  const overflowWidth = !block.position && availableWidth && block.width && block.width > availableWidth ? block.width - availableWidth : 0;
+  const overflowMarginLeft = block.align === 'center' ? -overflowWidth / 2 : block.align === 'right' ? -overflowWidth : undefined;
   const positionStyle = calculatePositionStyle(block.position);
 
   return (
@@ -23,6 +28,10 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
       className="oxv-docx-table-block"
       style={{
         ...positionStyle,
+        position: block.position ? positionStyle.position : 'relative',
+        top: block.position ? positionStyle.top : block.visualOffsetTop,
+        zIndex: block.position ? positionStyle.zIndex : 1,
+        marginTop: block.position ? undefined : block.marginTop,
         maxWidth: block.position ? 'none' : undefined,
       }}
     >
@@ -30,7 +39,7 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
         className="oxv-docx-table-block__table"
         style={{
           width: tableWidth,
-          marginLeft: block.position ? 0 : marginLeft,
+          marginLeft: block.position ? 0 : overflowWidth ? overflowMarginLeft : marginLeft,
           marginRight: block.position ? 0 : marginRight,
         }}
       >
@@ -48,7 +57,12 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
         ) : null}
         <tbody>
           {block.rows.map((row) => (
-            <tr key={row.id}>
+            <tr
+              key={row.id}
+              style={{
+                height: row.height,
+              }}
+            >
               {row.cells.map((cell) => (
                 <td
                   key={cell.id}
@@ -60,9 +74,9 @@ function DocxTableBlockComponent({ block, availableWidth }: DocxTableBlockProps)
                     borderRight: cell.borderRight ?? (cell.hasBorderRight ? 'none' : '1px solid #cfd7e3'),
                     borderBottom: cell.borderBottom ?? (cell.hasBorderBottom ? 'none' : '1px solid #cfd7e3'),
                     borderLeft: cell.borderLeft ?? (cell.hasBorderLeft ? 'none' : '1px solid #cfd7e3'),
-                    paddingTop: cell.paddingTop ?? 0,
+                    paddingTop: resolveVerticalPadding(cell.paddingTop),
                     paddingRight: cell.paddingRight ?? 7,
-                    paddingBottom: cell.paddingBottom ?? 0,
+                    paddingBottom: resolveVerticalPadding(cell.paddingBottom),
                     paddingLeft: cell.paddingLeft ?? 7,
                     width: shouldFit ? undefined : cell.width,
                     verticalAlign: cell.verticalAlign,

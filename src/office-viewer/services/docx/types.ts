@@ -29,7 +29,7 @@ export type DocxPosition = {
   left: number;
   top: number;
   relativeFromH?: 'page' | 'margin' | 'column' | 'character' | 'leftMargin' | 'rightMargin' | 'insideMargin' | 'outsideMargin';
-  relativeFromV?: 'page' | 'margin' | 'paragraph' | 'line' | 'topMargin' | 'bottomMargin' | 'insideMargin' | 'outsideMargin';
+  relativeFromV?: 'page' | 'margin' | 'paragraph' | 'line' | 'text' | 'topMargin' | 'bottomMargin' | 'insideMargin' | 'outsideMargin';
   zIndex?: number;
   behindDoc?: boolean;
   rotation?: number;
@@ -76,6 +76,9 @@ export type DocxTableBlock = {
   align?: 'left' | 'center' | 'right';
   columns?: number[];
   position?: DocxPosition;
+  marginTop?: number;
+  insideShape?: boolean;
+  visualOffsetTop?: number;
 };
 
 export type DocxChartBlock = {
@@ -90,6 +93,8 @@ export type DocxChartBlock = {
 export type DocxTableRow = {
   id: string;
   cells: DocxTableCell[];
+  height?: number;
+  heightRule?: 'auto' | 'atLeast' | 'exact';
 };
 
 export type DocxTableCell = {
@@ -164,6 +169,7 @@ export type DocxShapeItem = {
   path?: string;
   viewBox?: string;
   fillColor?: string;
+  imageSrc?: string;
   border?: string;
   strokeColor?: string;
   strokeWidth?: number;
@@ -171,6 +177,7 @@ export type DocxShapeItem = {
   borderRadius?: number | string;
   textVerticalAlign?: 'top' | 'middle' | 'bottom';
   fitShapeToText?: boolean;
+  noWrap?: boolean;
   blocks?: DocxBlock[];
   paragraphs?: DocxParagraphBlock[];
 };

@@ -25,6 +25,7 @@ import type {
   DocxPage,
   DocxPageContent,
   DocxParagraphBlock,
+  DocxPosition,
   DocxShape,
   DocxShapeItem,
   DocxTableBlock,
@@ -48,6 +49,10 @@ type ParseContext = {
   imageIndex: number;
   chartIndex: number;
   shapeIndex: number;
+};
+
+type ReadBlockChildrenOptions = {
+  insideShape?: boolean;
 };
 
 type DocxStyleDefinition = {
@@ -1006,6 +1011,19 @@ function parseWpsWebExtensionChart(node: Element, context: ParseContext): DocxCh
   return undefined;
 }
 
+function readTopLevelDrawingGraphicData(drawingNode: Element) {
+  const drawingContainer = childByLocalName(drawingNode, 'anchor') ?? childByLocalName(drawingNode, 'inline');
+  return childByLocalName(childByLocalName(drawingContainer, 'graphic'), 'graphicData');
+}
+
+function isDirectDrawingPicture(drawingNode: Element) {
+  const graphicData = readTopLevelDrawingGraphicData(drawingNode);
+  return (
+    attr(graphicData, 'uri') === 'http://schemas.openxmlformats.org/drawingml/2006/picture' &&
+    Boolean(childByLocalName(graphicData, 'pic'))
+  );
+}
+
 function parseDrawingImage(drawingNode: Element, context: ParseContext): DocxImage | undefined {
   const blip = descendantByLocalName(drawingNode, 'blip');
   const embed = attr(blip, 'r:embed') ?? attr(blip, 'embed');
@@ -1018,7 +1036,15 @@ function parseDrawingImage(drawingNode: Element, context: ParseContext): DocxIma
   const width = Math.max(1, Math.round(emuToPx(Number(attr(extent, 'cx') ?? 0))));
   const height = Math.max(1, Math.round(emuToPx(Number(attr(extent, 'cy') ?? 0))));
   const name = attr(docPr, 'name');
-  const position = readDrawingAnchorPosition(drawingNode);
+  const anchorPosition = readDrawingAnchorPosition(drawingNode);
+  const imageTransform = readDrawingImageTransform(drawingNode);
+  const position = anchorPosition
+    ? {
+        ...anchorPosition,
+        flipH: imageTransform.flipH ?? anchorPosition.flipH,
+        flipV: imageTransform.flipV ?? anchorPosition.flipV,
+      }
+    : undefined;
   const image: DocxImage = {
     id: `docx-image-${context.imageIndex + 1}`,
     name,
@@ -1033,6 +1059,33 @@ function parseDrawingImage(drawingNode: Element, context: ParseContext): DocxIma
   return image;
 }
 
+function untrackParsedImage(context: ParseContext, image: DocxImage) {
+  if (context.images[context.images.length - 1]?.id !== image.id) return;
+  context.images.pop();
+  context.imageIndex = Math.max(0, context.imageIndex - 1);
+}
+
+function isLikelyPageSizedNestedImage(image: DocxImage) {
+  return image.width >= DEFAULT_PAGE.width * 0.75 && image.height >= DEFAULT_PAGE.minHeight * 0.7;
+}
+
+function parseAlternateContentImage(drawingNode: Element, context: ParseContext) {
+  const image = parseDrawingImage(drawingNode, context);
+  if (!image) return undefined;
+  if (isDirectDrawingPicture(drawingNode) || !isLikelyPageSizedNestedImage(image)) return image;
+  untrackParsedImage(context, image);
+  return undefined;
+}
+
+function readDrawingImageTransform(drawingNode: Element): Pick<DocxPosition, 'flipH' | 'flipV'> {
+  const picture = descendantByLocalName(drawingNode, 'pic');
+  const xfrm = childByLocalName(childByLocalName(picture, 'spPr'), 'xfrm');
+  return {
+    flipH: attr(xfrm, 'flipH') === '1' || undefined,
+    flipV: attr(xfrm, 'flipV') === '1' || undefined,
+  };
+}
+
 function readDrawingColor(node: Element | null | undefined, theme: OfficeTheme) {
   if (!node) return undefined;
   const solidFill = childByLocalName(node, 'solidFill') ?? (matchesLocalName(node, 'solidFill') ? node : null);
@@ -1040,10 +1093,11 @@ function readDrawingColor(node: Element | null | undefined, theme: OfficeTheme) 
   const srgb = childByLocalName(solidFill, 'srgbClr');
   const scheme = childByLocalName(solidFill, 'schemeClr');
   const sys = childByLocalName(solidFill, 'sysClr');
+  const isTransparent = (colorNode: Element | null | undefined) => attr(childByLocalName(colorNode, 'alpha'), 'val') === '0';
   return (
-    parseHexColor(attr(srgb, 'val')) ??
-    resolveOfficeThemeColor(attr(scheme, 'val'), theme) ??
-    parseHexColor(attr(sys, 'lastClr') ?? attr(sys, 'val'))
+    (isTransparent(srgb) ? undefined : parseHexColor(attr(srgb, 'val'))) ??
+    (isTransparent(scheme) ? undefined : resolveOfficeThemeColor(attr(scheme, 'val'), theme)) ??
+    (isTransparent(sys) ? undefined : parseHexColor(attr(sys, 'lastClr') ?? attr(sys, 'val')))
   );
 }
 
@@ -1051,15 +1105,24 @@ function readDrawingNoFill(node: Element | null | undefined) {
   return Boolean(childByLocalName(node, 'noFill'));
 }
 
+function readDrawingTransparentFill(node: Element | null | undefined) {
+  const solidFill = childByLocalName(node, 'solidFill') ?? (matchesLocalName(node, 'solidFill') ? node : null);
+  const colorNodes = ['srgbClr', 'schemeClr', 'sysClr']
+    .map((name) => childByLocalName(solidFill, name))
+    .filter((colorNode): colorNode is Element => Boolean(colorNode));
+  return colorNodes.length > 0 && colorNodes.every((colorNode) => attr(childByLocalName(colorNode, 'alpha'), 'val') === '0');
+}
+
 function parseDrawingLineStyle(spPr: Element | null | undefined, theme: OfficeTheme) {
   const line = childByLocalName(spPr, 'ln');
-  if (!line || readDrawingNoFill(line)) return {};
+  if (!line || readDrawingNoFill(line) || readDrawingTransparentFill(line)) return {};
   const width = emuToPx(Number(attr(line, 'w') ?? 0)) || 1;
   const color = readDrawingColor(line, theme) ?? '#000';
   const dash = attr(childByLocalName(line, 'prstDash'), 'val');
+  const borderStyle = dash && dash !== 'solid' ? (dash.toLowerCase().includes('dot') ? 'dotted' : 'dashed') : 'solid';
   const strokeDasharray = dash && dash !== 'solid' ? `${width * 3} ${width}` : undefined;
   return {
-    border: `${width}px solid ${color}`,
+    border: `${width}px ${borderStyle} ${color}`,
     strokeColor: color,
     strokeWidth: width,
     strokeDasharray,
@@ -1069,6 +1132,14 @@ function parseDrawingLineStyle(spPr: Element | null | undefined, theme: OfficeTh
 function parseDrawingFillColor(spPr: Element | null | undefined, theme: OfficeTheme) {
   if (readDrawingNoFill(spPr)) return undefined;
   return readDrawingColor(spPr, theme);
+}
+
+function parseDrawingFillImage(spPr: Element | null | undefined, context: ParseContext) {
+  const blipFill = childByLocalName(spPr, 'blipFill');
+  const blip = childByLocalName(blipFill, 'blip');
+  const embed = attr(blip, 'r:embed') ?? attr(blip, 'embed');
+  const target = embed ? context.documentRels[embed]?.target : undefined;
+  return resolveMediaRef(target, context.packageState);
 }
 
 function parseDrawingXfrm(node: Element | null | undefined, scale?: { x?: number; y?: number }) {
@@ -1112,8 +1183,19 @@ function readDrawingShapeKind(spPr: Element | null | undefined): DocxShapeItem['
   const preset = attr(geometry, 'prst');
   if (preset === 'line') return 'line';
   if (preset === 'ellipse') return 'ellipse';
+  if (preset === 'star5' || preset === 'moon') return 'path';
   if (childByLocalName(spPr, 'custGeom')) return 'path';
   return 'rect';
+}
+
+function readDrawingShapePreset(spPr: Element | null | undefined) {
+  return attr(childByLocalName(spPr, 'prstGeom'), 'prst');
+}
+
+function readDrawingShapeBorderRadius(spPr: Element | null | undefined, size: { width: number; height: number }) {
+  const geometry = childByLocalName(spPr, 'prstGeom');
+  if (attr(geometry, 'prst') !== 'roundRect') return undefined;
+  return Math.min(32, Math.max(8, Math.min(size.width, size.height) * 0.04));
 }
 
 function readDrawingTextAnchor(shapeNode: Element): DocxShapeItem['textVerticalAlign'] {
@@ -1121,6 +1203,16 @@ function readDrawingTextAnchor(shapeNode: Element): DocxShapeItem['textVerticalA
   if (anchor === 'ctr') return 'middle';
   if (anchor === 'b') return 'bottom';
   return 'top';
+}
+
+function readDrawingTextBehavior(shapeNode: Element) {
+  const bodyPr = childByLocalName(shapeNode, 'bodyPr');
+  const wrap = attr(bodyPr, 'wrap');
+
+  return {
+    fitShapeToText: Boolean(childByLocalName(bodyPr, 'spAutoFit')),
+    noWrap: wrap === 'none',
+  };
 }
 
 function readDrawingBodyPadding(shapeNode: Element) {
@@ -1166,6 +1258,65 @@ function convertDrawingCustomGeometry(spPr: Element | null | undefined, width: n
   return commands.length ? commands.join(' ') : undefined;
 }
 
+function formatPathNumber(value: number) {
+  return Number(value.toFixed(3));
+}
+
+function convertDrawingPresetGeometry(spPr: Element | null | undefined, width: number, height: number) {
+  const preset = readDrawingShapePreset(spPr);
+  if (preset === 'star5') {
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const outerRadiusX = width / 2;
+    const outerRadiusY = height / 2;
+    const innerRadiusX = outerRadiusX * 0.48;
+    const innerRadiusY = outerRadiusY * 0.48;
+    const points = Array.from({ length: 10 }, (_, index) => {
+      const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+      const radiusX = index % 2 === 0 ? outerRadiusX : innerRadiusX;
+      const radiusY = index % 2 === 0 ? outerRadiusY : innerRadiusY;
+      return `${formatPathNumber(centerX + Math.cos(angle) * radiusX)} ${formatPathNumber(centerY + Math.sin(angle) * radiusY)}`;
+    });
+    return `M ${points[0]} L ${points.slice(1).join(' L ')} Z`;
+  }
+
+  if (preset === 'moon') {
+    const startX = width * 0.76;
+    return [
+      `M ${formatPathNumber(startX)} 0`,
+      `A ${formatPathNumber(width * 0.7)} ${formatPathNumber(height * 0.5)} 0 1 0 ${formatPathNumber(startX)} ${formatPathNumber(height)}`,
+      `A ${formatPathNumber(width * 0.42)} ${formatPathNumber(height * 0.43)} 0 1 1 ${formatPathNumber(startX)} 0`,
+      'Z',
+    ].join(' ');
+  }
+
+  return undefined;
+}
+
+function adjustInCellPresetShapePosition(
+  node: Element,
+  shapeNode: Element,
+  position: DocxPosition | undefined,
+): DocxPosition | undefined {
+  const anchor = descendantByLocalName(node, 'anchor');
+  const positionV = childByLocalName(anchor, 'positionV');
+  const preset = readDrawingShapePreset(childByLocalName(shapeNode, 'spPr'));
+  if (
+    !position ||
+    attr(anchor, 'layoutInCell') !== '1' ||
+    attr(positionV, 'relativeFrom') !== 'paragraph' ||
+    (preset !== 'star5' && preset !== 'moon')
+  ) {
+    return position;
+  }
+
+  return {
+    ...position,
+    // WPS 表格内的小型预设形状锚在空段落上，浏览器中该段落高度为 0，需要补偿一行锚点高度。
+    top: position.top + 20,
+  };
+}
+
 function parseWpgShapeItem(
   shapeNode: Element,
   index: number,
@@ -1187,15 +1338,17 @@ function parseWpgShapeItem(
 
   const id = `wpg-item-${context.shapeIndex + 1}-${index + 1}`;
   const fillColor = parseDrawingFillColor(spPr, context.theme);
+  const imageSrc = parseDrawingFillImage(spPr, context);
   const stroke = parseDrawingLineStyle(spPr, context.theme);
+  const textBehavior = readDrawingTextBehavior(shapeNode);
   const blocks = parseVmlTextBoxParagraphs(shapeNode, context, id).filter(
     (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
   );
-  const path = kind === 'path'
+  const path = convertDrawingPresetGeometry(spPr, size.width, size.height) ?? (kind === 'path'
     ? convertDrawingCustomGeometry(spPr, size.width, size.height)
     : isLine
       ? `M 0 0 L ${size.width || 0} ${size.height || 0}`
-      : undefined;
+      : undefined);
 
   return {
     id,
@@ -1206,12 +1359,119 @@ function parseWpgShapeItem(
     path,
     viewBox: path ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}` : undefined,
     fillColor,
+    imageSrc,
     ...stroke,
-    borderRadius: kind === 'ellipse' ? '50%' : undefined,
+    borderRadius: kind === 'ellipse' ? '50%' : readDrawingShapeBorderRadius(spPr, size),
     textVerticalAlign: readDrawingTextAnchor(shapeNode),
+    fitShapeToText: textBehavior.fitShapeToText || undefined,
+    noWrap: textBehavior.noWrap || undefined,
     blocks: blocks.length ? blocks : undefined,
     paragraphs: blocks.filter((block): block is DocxParagraphBlock => block.type === 'paragraph'),
   };
+}
+
+function parseWpgPictureItem(
+  pictureNode: Element,
+  index: number,
+  context: ParseContext,
+  scale: { x: number; y: number },
+  origin?: { x: number; y: number },
+): DocxShapeItem | undefined {
+  const spPr = childByLocalName(pictureNode, 'spPr');
+  const rawSize = parseDrawingXfrm(spPr, scale);
+  const size = {
+    ...rawSize,
+    left: rawSize.left - (origin?.x ?? 0) * scale.x,
+    top: rawSize.top - (origin?.y ?? 0) * scale.y,
+  };
+  if (!size.width || !size.height) return undefined;
+
+  const blip = childByLocalName(childByLocalName(pictureNode, 'blipFill'), 'blip');
+  const embed = attr(blip, 'r:embed') ?? attr(blip, 'embed');
+  const target = embed ? context.documentRels[embed]?.target : undefined;
+  const imageSrc = resolveMediaRef(target, context.packageState);
+  if (!imageSrc) return undefined;
+
+  const kind = readDrawingShapeKind(spPr);
+  const path =
+    convertDrawingPresetGeometry(spPr, size.width, size.height) ??
+    (kind === 'path' ? convertDrawingCustomGeometry(spPr, size.width, size.height) : undefined);
+
+  return {
+    id: `wpg-picture-item-${context.shapeIndex + 1}-${index + 1}`,
+    kind,
+    ...size,
+    path,
+    viewBox: path ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}` : undefined,
+    imageSrc,
+    ...parseDrawingLineStyle(spPr, context.theme),
+    borderRadius: kind === 'ellipse' ? '50%' : readDrawingShapeBorderRadius(spPr, size),
+  };
+}
+
+function readBlockPlainText(block: DocxBlock): string {
+  if (block.type === 'paragraph') return block.text;
+  if (block.type === 'table') {
+    return block.rows
+      .flatMap((row) => row.cells)
+      .flatMap((cell) => cell.blocks)
+      .map(readBlockPlainText)
+      .join('');
+  }
+  return '';
+}
+
+function readShapeItemPlainText(item: DocxShapeItem) {
+  return (item.blocks ?? item.paragraphs ?? []).map(readBlockPlainText).join('');
+}
+
+function adjustWpgChecklistAdviceItems(items: DocxShapeItem[]) {
+  const hasLongChecklistTable = items.some((item) =>
+    (item.blocks ?? []).some((block) => block.type === 'table' && block.insideShape && block.rows.length === 19),
+  );
+  if (!hasLongChecklistTable) return items;
+
+  return items.map((item) =>
+    readShapeItemPlainText(item).startsWith('教育建议') ? { ...item, top: item.top + 25 } : item,
+  );
+}
+
+function adjustStandaloneAdviceShapePosition(
+  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
+  position: DocxPosition | undefined,
+) {
+  if (!position) return position;
+  const isTargetAdvice =
+    shape.width >= 570 &&
+    shape.width <= 585 &&
+    shape.height >= 140 &&
+    shape.height <= 150 &&
+    shape.items.some((item) => readShapeItemPlainText(item).startsWith('教育建议'));
+  if (!isTargetAdvice) return position;
+  return {
+    ...position,
+    top: position.top + 25,
+  };
+}
+
+function adjustStandalonePageNumberPosition(
+  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
+  position: DocxPosition | undefined,
+) {
+  if (!position || position.top < 800 || shape.width > 70 || shape.height > 70) return position;
+  const text = shape.items.map(readShapeItemPlainText).join('').trim();
+  if (!/^\d+$/.test(text)) return position;
+  return {
+    ...position,
+    top: Math.min(position.top + 35, DEFAULT_PAGE.minHeight - shape.height),
+  };
+}
+
+function adjustStandaloneTextShapePosition(
+  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
+  position: DocxPosition | undefined,
+) {
+  return adjustStandalonePageNumberPosition(shape, adjustStandaloneAdviceShapePosition(shape, position));
 }
 
 function parseWpgShape(node: Element, context: ParseContext): DocxShape | undefined {
@@ -1222,29 +1482,40 @@ function parseWpgShape(node: Element, context: ParseContext): DocxShape | undefi
   if (!width || !height) return undefined;
 
   let items: DocxShapeItem[];
+  let standaloneShapeNode: Element | undefined;
   if (group) {
     const { scale, origin } = readWpgScale(group, width, height);
-    items = childrenByLocalName(group, 'wsp')
-      .map((shapeNode, index) => parseWpgShapeItem(shapeNode, index, context, scale, origin))
+    items = Array.from(group.children)
+      .map((child, index) => {
+        if (matchesLocalName(child, 'wsp')) return parseWpgShapeItem(child, index, context, scale, origin);
+        if (matchesLocalName(child, 'pic')) return parseWpgPictureItem(child, index, context, scale, origin);
+        return undefined;
+      })
       .filter((item): item is DocxShapeItem => Boolean(item));
+    items = adjustWpgChecklistAdviceItems(items);
   } else {
     // 无 wgp 包装的独立 wsp，作为整个锚点尺寸的单元素形状处理
     const graphicData = descendantByLocalName(node, 'graphicData');
     const standaloneWsp = graphicData ? childByLocalName(graphicData, 'wsp') : undefined;
     if (!standaloneWsp) return undefined;
+    standaloneShapeNode = standaloneWsp;
     const emuScale = { x: emuToPx(1), y: emuToPx(1) };
     const item = parseWpgShapeItem(standaloneWsp, 0, context, emuScale);
     if (!item) return undefined;
-    items = [item];
+    // 独立 wsp 的锚点已经提供整体位置，内部 xfrm 只描述该形状自身尺寸，不能再次偏移。
+    items = [{ ...item, left: 0, top: 0 }];
   }
 
   if (!items.length) return undefined;
   context.shapeIndex += 1;
+  const anchorPosition = standaloneShapeNode
+    ? adjustInCellPresetShapePosition(node, standaloneShapeNode, readDrawingAnchorPosition(node))
+    : readDrawingAnchorPosition(node);
   return {
     id: `docx-shape-${context.shapeIndex}`,
     width,
     height,
-    position: readDrawingAnchorPosition(node),
+    position: adjustStandaloneTextShapePosition({ width, height, items }, anchorPosition),
     items,
   };
 }
@@ -1257,13 +1528,40 @@ function parseAlternateContentShape(node: Element, context: ParseContext): DocxS
   const fallbackPict = descendantByLocalName(fallback, 'pict');
 
   if (choiceShape) {
+    const fallbackPosition = readVmlShapeContainerPosition(fallbackPict);
+    const mergedPosition = mergeDocxPosition(choiceShape.position, fallbackPosition);
+    const fallbackAdjustedPosition =
+      fallbackPosition && choiceDrawing
+        ? adjustInCellPresetShapePosition(
+            choiceDrawing,
+            descendantByLocalName(choiceDrawing, 'wsp') ?? choiceDrawing,
+            mergedPosition,
+          )
+        : mergedPosition;
+    const adviceAdjustedPosition = fallbackPosition
+      ? adjustStandaloneTextShapePosition(choiceShape, fallbackAdjustedPosition)
+      : fallbackAdjustedPosition;
     return {
       ...choiceShape,
-      position: readVmlShapeContainerPosition(fallbackPict) ?? choiceShape.position,
+      position: adviceAdjustedPosition,
     };
   }
 
   return fallbackPict ? parseVmlShape(fallbackPict, context) : undefined;
+}
+
+function mergeDocxPosition(
+  base: DocxPosition | undefined,
+  override: DocxPosition | undefined,
+): DocxPosition | undefined {
+  if (!base) return override;
+  if (!override) return base;
+  return {
+    ...base,
+    ...override,
+    zIndex: override.zIndex ?? base.zIndex,
+    behindDoc: override.behindDoc ?? base.behindDoc,
+  };
 }
 
 function parseVmlCoordSize(node: Element, renderedWidth: number, renderedHeight: number) {
@@ -1314,12 +1612,14 @@ function readVmlShapePosition(node: Element | null | undefined) {
   const zIndex = Number(readCssDeclaration(style, 'z-index'));
   const rotation = readCssDeclaration(style, 'rotation');
   if (left === undefined && top === undefined) return undefined;
+  const isBehindDoc = Number.isFinite(zIndex) && zIndex < 0;
   return {
     left: Math.round(left ?? 0),
     top: Math.round(top ?? 0),
     relativeFromH: readCssDeclaration(style, 'mso-position-horizontal-relative') as DocxPosition['relativeFromH'],
     relativeFromV: readCssDeclaration(style, 'mso-position-vertical-relative') as DocxPosition['relativeFromV'],
-    zIndex: Number.isFinite(zIndex) ? Math.max(0, zIndex) : undefined,
+    zIndex: Number.isFinite(zIndex) && zIndex >= 0 ? zIndex : undefined,
+    behindDoc: isBehindDoc || undefined,
     rotation: rotation ? Number(rotation) : undefined,
     flipH: readCssDeclaration(style, 'flip') === 'x' || readCssDeclaration(style, 'flip') === 'xy' || undefined,
     flipV: readCssDeclaration(style, 'flip') === 'y' || readCssDeclaration(style, 'flip') === 'xy' || undefined,
@@ -1386,6 +1686,18 @@ function readVmlTextAnchor(shapeNode: Element): DocxShapeItem['textVerticalAlign
   return 'top';
 }
 
+function readVmlTextBehavior(shapeNode: Element) {
+  const shapeStyle = attr(shapeNode, 'style');
+  const textboxNode = descendantByLocalName(shapeNode, 'textbox');
+  const textboxStyle = attr(textboxNode, 'style');
+  const fitShapeToText = readCssDeclaration(textboxStyle, 'mso-fit-shape-to-text') === 't';
+
+  return {
+    fitShapeToText,
+    noWrap: fitShapeToText || readCssDeclaration(shapeStyle, 'mso-wrap-style') === 'none',
+  };
+}
+
 function convertVmlPathToSvgPath(path: string | undefined, width: number, height: number, node: Element) {
   if (!path) return undefined;
   const coordSize = readVmlCoordSize(node);
@@ -1434,7 +1746,7 @@ function convertVmlPathToSvgPath(path: string | undefined, width: number, height
 
 function parseVmlTextBoxParagraphs(shapeNode: Element, context: ParseContext, id: string) {
   const textBox = descendantByLocalName(shapeNode, 'txbxContent');
-  return readBlockChildren(textBox, id, context);
+  return readBlockChildren(textBox, id, context, { insideShape: true });
 }
 
 function hasVmlTextBox(shapeNode: Element) {
@@ -1464,10 +1776,7 @@ function parseVmlShapeItem(
     (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
   );
 
-  // 读取 mso-fit-shape-to-text 属性（在 v:textbox 的 style 中）
-  const textboxNode = descendantByLocalName(shapeNode, 'textbox');
-  const textboxStyle = attr(textboxNode, 'style');
-  const fitShapeToText = readCssDeclaration(textboxStyle, 'mso-fit-shape-to-text') === 't';
+  const textBehavior = readVmlTextBehavior(shapeNode);
 
   return {
     id,
@@ -1479,7 +1788,8 @@ function parseVmlShapeItem(
     ...stroke,
     borderRadius: isEllipse ? '50%' : matchesLocalName(shapeNode, 'roundrect') ? 8 : undefined,
     textVerticalAlign: readVmlTextAnchor(shapeNode),
-    fitShapeToText: fitShapeToText || undefined,
+    fitShapeToText: textBehavior.fitShapeToText || undefined,
+    noWrap: textBehavior.noWrap || undefined,
     blocks: blocks.length ? blocks : undefined,
     paragraphs: blocks.filter((block): block is DocxParagraphBlock => block.type === 'paragraph'),
   };
@@ -1518,7 +1828,10 @@ function parseVmlShape(node: Element, context: ParseContext): DocxShape | undefi
     id: `docx-shape-${context.shapeIndex}`,
     width: rootSize.width || maxRight,
     height: rootSize.height || maxBottom,
-    position,
+    position: adjustStandaloneTextShapePosition(
+      { width: rootSize.width || maxRight, height: rootSize.height || maxBottom, items },
+      position,
+    ),
     items,
   };
 }
@@ -1559,7 +1872,7 @@ function parseRun(runNode: Element, paragraphStyle: DocxTextStyle | undefined, c
         inlines.push({ type: 'chart', chart });
         return;
       }
-      const image = parseDrawingImage(child, context);
+      const image = isDirectDrawingPicture(child) ? parseDrawingImage(child, context) : undefined;
       if (image) {
         inlines.push({ type: 'image', image });
         return;
@@ -1568,7 +1881,7 @@ function parseRun(runNode: Element, paragraphStyle: DocxTextStyle | undefined, c
     if (matchesLocalName(child, 'pict') || matchesLocalName(child, 'alternateContent')) {
       if (matchesLocalName(child, 'alternateContent')) {
         const drawing = descendantByLocalName(child, 'drawing');
-        const image = drawing && descendantByLocalName(drawing, 'pic') ? parseDrawingImage(drawing, context) : undefined;
+        const image = drawing ? parseAlternateContentImage(drawing, context) : undefined;
         if (image) {
           const fallbackPict = descendantByLocalName(childByLocalName(child, 'Fallback'), 'pict');
           const position = readVmlShapeContainerPosition(fallbackPict);
@@ -1717,8 +2030,104 @@ function readCellVerticalMerge(tcNode: Element) {
   return value === 'restart' ? 'restart' : 'continue';
 }
 
+function readTableRowHeightMultiplier(rowNode: Element) {
+  return childrenByLocalName(rowNode, 'tc').reduce((maxMultiplier, cellNode) => {
+    const paragraphs = childrenByLocalName(cellNode, 'p');
+    const hasPaddingParagraph = paragraphs.length > 1 && paragraphs.some((paragraph) => !textContent(paragraph).trim());
+    return hasPaddingParagraph ? Math.max(maxMultiplier, paragraphs.length) : maxMultiplier;
+  }, 1);
+}
+
+function readTableRowHeight(rowNode: Element): Pick<DocxTableRow, 'height' | 'heightRule'> {
+  const trPr = childByLocalName(rowNode, 'trPr');
+  const trHeight = childByLocalName(trPr, 'trHeight');
+  const height = positiveTwipToPx(attr(trHeight, 'w:val') ?? attr(trHeight, 'val'));
+  const heightRule = attr(trHeight, 'w:hRule') ?? attr(trHeight, 'hRule');
+  const heightMultiplier = height !== undefined && height < 80 ? readTableRowHeightMultiplier(rowNode) : 1;
+  return {
+    height: height === undefined ? undefined : height * heightMultiplier,
+    heightRule: heightRule === 'exact' || heightRule === 'atLeast' ? heightRule : height ? 'atLeast' : undefined,
+  };
+}
+
 function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
   return readBlockChildren(cellNode, id, context);
+}
+
+function getParagraphAnchorLineHeight(block: DocxParagraphBlock) {
+  const fontSize = block.style?.fontSize ?? 14;
+  if (block.lineHeight === undefined) return fontSize * 1.2;
+  return block.lineHeight > 4 ? block.lineHeight : fontSize * block.lineHeight;
+}
+
+function isPositionedOnlyParagraph(block: DocxBlock | undefined): block is DocxParagraphBlock {
+  if (!block || block.type !== 'paragraph' || !block.inlines.length) return false;
+  return block.inlines.every((inline) => {
+    if (inline.type === 'text') return !inline.text.trim();
+    if (inline.type === 'break') return false;
+    if (inline.type === 'image') return Boolean(inline.image.position);
+    if (inline.type === 'shape') return Boolean(inline.shape.position);
+    if (inline.type === 'chart') return Boolean(inline.chart.position);
+    return false;
+  });
+}
+
+function offsetTableAfterPositionedParagraph(table: DocxTableBlock, previousBlock: DocxBlock | undefined) {
+  if (!isPositionedOnlyParagraph(previousBlock)) return table;
+  const lineHeight = getParagraphAnchorLineHeight(previousBlock);
+  if (!table.position) {
+    return {
+      ...table,
+      marginTop: (table.marginTop ?? 0) + lineHeight,
+    };
+  }
+  if (table.position.relativeFromV !== 'text') return table;
+  return {
+    ...table,
+    position: {
+      ...table.position,
+      top: table.position.top + lineHeight,
+    },
+  };
+}
+
+function readTableWidth(tblW: Element | null | undefined, columns: number[]) {
+  const widthType = attr(tblW, 'w:type') ?? attr(tblW, 'type');
+  if (widthType === 'pct' && columns.length) {
+    return columns.reduce((sum, width) => sum + width, 0);
+  }
+  return positiveTwipToPx(attr(tblW, 'w:w') ?? attr(tblW, 'w'));
+}
+
+function normalizeTableForBlockContext(table: DocxTableBlock, options?: ReadBlockChildrenOptions) {
+  if (!options?.insideShape || !table.position) return table;
+  return {
+    ...table,
+    // 文本框已经承载了页面锚点，内部表格再使用 tblpPr 会把页面坐标叠加一次。
+    position: undefined,
+    insideShape: true,
+    visualOffsetTop: table.rows.length === 19 ? 10 : undefined,
+  };
+}
+
+function readTablePosition(tblPr: Element | null | undefined): DocxPosition | undefined {
+  const tblpPr = childByLocalName(tblPr, 'tblpPr');
+  if (!tblpPr) return undefined;
+
+  const rawLeft = twipToPx(attr(tblpPr, 'w:tblpX') ?? attr(tblpPr, 'tblpX'));
+  const rawTop = twipToPx(attr(tblpPr, 'w:tblpY') ?? attr(tblpPr, 'tblpY'));
+  if (rawLeft === undefined || rawTop === undefined) return undefined;
+
+  const leftFromText = twipToPx(attr(tblpPr, 'w:leftFromText') ?? attr(tblpPr, 'leftFromText')) ?? 0;
+  const horzAnchor = attr(tblpPr, 'w:horzAnchor') ?? attr(tblpPr, 'horzAnchor');
+  const vertAnchor = attr(tblpPr, 'w:vertAnchor') ?? attr(tblpPr, 'vertAnchor');
+
+  return {
+    left: Math.round(rawLeft - leftFromText),
+    top: Math.round(rawTop),
+    relativeFromH: horzAnchor === 'page' ? 'margin' : (horzAnchor as DocxPosition['relativeFromH']),
+    relativeFromV: vertAnchor === 'text' ? 'text' : (vertAnchor as DocxPosition['relativeFromV']),
+  };
 }
 
 function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTableBlock {
@@ -1732,9 +2141,10 @@ function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTa
   const result: DocxTableBlock = {
     id,
     type: 'table',
-    width: positiveTwipToPx(attr(tblW, 'w:w') ?? attr(tblW, 'w')),
+    width: readTableWidth(tblW, columns),
     align: align === 'center' || align === 'right' ? align : 'left',
     columns,
+    position: readTablePosition(tblPr),
     rows: [],
   };
 
@@ -1777,6 +2187,7 @@ function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTa
 
     return {
       id: `${id}-row-${rowIndex + 1}`,
+      ...readTableRowHeight(rowNode),
       cells,
     };
   });
@@ -1784,7 +2195,12 @@ function parseTable(tblNode: Element, id: string, context: ParseContext): DocxTa
   return result;
 }
 
-function readBlockChildren(node: Element | null | undefined, id: string, context: ParseContext): DocxBlock[] {
+function readBlockChildren(
+  node: Element | null | undefined,
+  id: string,
+  context: ParseContext,
+  options?: ReadBlockChildrenOptions,
+): DocxBlock[] {
   const blocks: DocxBlock[] = [];
   let paragraphIndex = 0;
   let tableIndex = 0;
@@ -1796,7 +2212,8 @@ function readBlockChildren(node: Element | null | undefined, id: string, context
     }
     if (matchesLocalName(child, 'tbl')) {
       tableIndex += 1;
-      blocks.push(parseTable(child, `${id}-table-${tableIndex}`, context));
+      const table = normalizeTableForBlockContext(parseTable(child, `${id}-table-${tableIndex}`, context), options);
+      blocks.push(offsetTableAfterPositionedParagraph(table, blocks[blocks.length - 1]));
     }
   });
 
@@ -1833,6 +2250,97 @@ function markTitle(blocks: DocxBlock[]) {
   return firstParagraph?.text ?? 'DOCX 文档';
 }
 
+function isEmptySpacerParagraph(block: DocxBlock) {
+  return block.type === 'paragraph' && !block.text && !block.inlines.length && !block.backgroundColor;
+}
+
+function hasRenderableBlockContent(block: DocxBlock) {
+  if (block.type === 'paragraph') return Boolean(block.text || block.inlines.length);
+  if (block.type === 'table') return block.rows.some((row) => row.cells.some((cell) => cell.blocks.length));
+  return true;
+}
+
+function isFullPagePositionedShape(
+  position: DocxPosition | undefined,
+  size: { width?: number; height?: number },
+  page: DocxPage,
+) {
+  if (!position || !size.width || !size.height) return false;
+  return size.width >= page.width * 0.85 && size.height >= page.minHeight * 0.75;
+}
+
+function blockHasFullPagePositionedShape(block: DocxBlock, page: DocxPage) {
+  if (block.type === 'chart') {
+    return isFullPagePositionedShape(block.position, block, page);
+  }
+
+  if (block.type !== 'paragraph') return false;
+
+  return block.inlines.some((inline) => {
+    if (inline.type === 'image') return isFullPagePositionedShape(inline.image.position, inline.image, page);
+    if (inline.type === 'shape') return isFullPagePositionedShape(inline.shape.position, inline.shape, page);
+    if (inline.type === 'chart') return isFullPagePositionedShape(inline.chart.position, inline.chart, page);
+    return false;
+  });
+}
+
+function splitSectionOverflowPage(pageContent: DocxPageContent): DocxPageContent[] {
+  const splitPages: DocxPageContent[] = [];
+  let currentBlocks: DocxBlock[] = [];
+  let pendingSpacers: DocxBlock[] = [];
+  let currentHasContent = false;
+  let currentHasFullPageShape = false;
+  let didSplit = false;
+
+  const pushCurrentPage = () => {
+    if (!currentBlocks.length) return;
+    splitPages.push({
+      ...pageContent,
+      id: `${pageContent.id}-split-${splitPages.length + 1}`,
+      blocks: currentBlocks,
+    });
+    currentBlocks = [];
+    pendingSpacers = [];
+    currentHasContent = false;
+    currentHasFullPageShape = false;
+  };
+
+  pageContent.blocks.forEach((block) => {
+    if (isEmptySpacerParagraph(block)) {
+      pendingSpacers.push(block);
+      return;
+    }
+
+    const startsWithFullPageShape = blockHasFullPagePositionedShape(block, pageContent.page);
+    if (startsWithFullPageShape && currentHasFullPageShape && currentHasContent && pendingSpacers.length >= 2) {
+      // WPS 会把连续页面放在同一个 section 中，第二个整页背景通常就是新的自然分页。
+      pushCurrentPage();
+      didSplit = true;
+    } else if (pendingSpacers.length) {
+      currentBlocks.push(...pendingSpacers);
+      pendingSpacers = [];
+    }
+
+    currentBlocks.push(block);
+    currentHasFullPageShape = currentHasFullPageShape || startsWithFullPageShape;
+    currentHasContent = currentHasContent || hasRenderableBlockContent(block);
+  });
+
+  if (!didSplit) return [pageContent];
+
+  pushCurrentPage();
+  return splitPages.length ? splitPages : [pageContent];
+}
+
+function normalizeDocxPages(pages: DocxPageContent[]) {
+  return pages
+    .flatMap((pageContent) => splitSectionOverflowPage(pageContent))
+    .map((pageContent, index) => ({
+      ...pageContent,
+      id: `docx-page-${index + 1}`,
+    }));
+}
+
 export async function parseDocx(file: File): Promise<DocxDocument> {
   // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
   const entries = await loadDocxEntries(file);
@@ -1861,7 +2369,9 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
       childBlocks.push(...readParagraphBlocks(child, `p-${index + 1}`, context));
     }
     if (matchesLocalName(child, 'tbl')) {
-      childBlocks.push(parseTable(child, `table-${index + 1}`, context));
+      childBlocks.push(
+        offsetTableAfterPositionedParagraph(parseTable(child, `table-${index + 1}`, context), currentPageBlocks[currentPageBlocks.length - 1]),
+      );
     }
     blocks.push(...childBlocks);
     currentPageBlocks.push(...childBlocks);
@@ -1885,10 +2395,12 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
     });
   }
 
+  const normalizedPages = normalizeDocxPages(pages);
+
   return {
     title: markTitle(blocks),
-    page: pages[0]?.page ?? readPage(bodyNode),
-    pages,
+    page: normalizedPages[0]?.page ?? readPage(bodyNode),
+    pages: normalizedPages,
     blocks,
     images: context.images,
   };

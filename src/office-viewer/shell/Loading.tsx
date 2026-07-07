@@ -9,7 +9,9 @@ type OfficeLoadingProps = {
 function OfficeLoadingComponent({ tip = '正在解析文件' }: OfficeLoadingProps) {
   return (
     <div className="oxv-office-loading">
-      <Spin size="large" tip={tip} />
+      <Spin size="large" tip={tip}>
+        <div className="oxv-office-loading__placeholder" />
+      </Spin>
     </div>
   );
 }

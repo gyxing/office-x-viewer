@@ -30,6 +30,7 @@ function DocxParagraphComponent({ block, compact = false, asDiv = false }: DocxP
     if (inline.type === 'chart') return Boolean(inline.chart.position);
     return false;
   });
+  const hasBlockLevelInline = block.inlines.some((inline) => inline.type === 'shape' || inline.type === 'chart');
 
   const positionStyle = calculatePositionStyle(block.position);
 
@@ -45,8 +46,9 @@ function DocxParagraphComponent({ block, compact = false, asDiv = false }: DocxP
       return {
         ...positionStyle,
         position: block.position ? positionStyle.position : 'relative',
+        zIndex: block.position ? positionStyle.zIndex : hasFlowContent ? 1 : undefined,
         margin: block.position ? 0 : undefined,
-        marginTop: block.position ? undefined : compact ? 0 : block.spacingBefore,
+        marginTop: block.position ? undefined : compact ? 0 : block.spacingBefore ?? 0,
         marginRight: block.position ? undefined : block.indentRight,
         marginBottom: block.position ? undefined : block.spacingAfter ?? 0,
         marginLeft: block.position ? undefined : block.indentLeft,
@@ -73,8 +75,8 @@ function DocxParagraphComponent({ block, compact = false, asDiv = false }: DocxP
     [block, compact, hasContent, hasFlowContent, positionStyle],
   );
 
-  // 使用 div 而不是 p 来避免 DOM 嵌套警告(当包含定位元素或强制使用 div 时)
-  const Container = (hasPositionedElements || asDiv) ? 'div' : 'p';
+  // 图表和形状内部会渲染块级节点，使用 div 容器避免嵌套到 p 里触发浏览器修正。
+  const Container = (hasPositionedElements || hasBlockLevelInline || asDiv) ? 'div' : 'p';
 
   return (
     <Container style={paragraphStyle}>
