@@ -1,3 +1,16 @@
 {
-  "extends": "./src/.umi/tsconfig.json"
+  "compilerOptions": {
+    "strict": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "jsx": "react",
+    "baseUrl": "./",
+    "paths": {
+      "@@/*": [".dumi/tmp/*"],
+      "office-x-viewer": ["src"],
+      "office-x-viewer/*": ["src/*", "*"]
+    }
+  },
+  "include": [".dumirc.ts", ".fatherrc.ts", "src/**/*"]
 }

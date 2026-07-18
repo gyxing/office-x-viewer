@@ -1,12 +1,6 @@
-/node_modules
-/.env.local
-/.umirc.local.ts
-/config/config.local.ts
-/src/.umi
-/src/.umi-production
-/src/.umi-test
+node_modules
 /dist
-.swc
-.turbopack
-.idea
-/docs
+.dumi/tmp
+.dumi/tmp-test
+.dumi/tmp-production
+.DS_Store
