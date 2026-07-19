@@ -1,153 +1,211 @@
 # Office Viewer
 
-纯前端、浏览器端的 Microsoft Office 文档预览组件。无需服务端参与，所有文件解析和渲染均在客户端完成。基于 React + Ant Design 构建。
+`office-x-viewer` 是一个纯前端的 Microsoft Office 文档预览组件。文件下载、解析和渲染均在浏览器中完成，无需配套的文档转换服务。
 
-## 支持格式
+组件基于 React、Ant Design、JSZip 和 ECharts，支持 PPTX、XLSX、DOCX，以及 DOC/WPS 的降级预览。
 
-| 格式 | 扩展名 | 支持程度 | 说明 |
-|------|--------|---------|------|
-| PowerPoint | `.pptx` | 完整支持 | 幻灯片母版/布局占位符继承、文本、形状（预设/自定义几何）、图片（裁剪/旋转/翻转）、表格、图表（含 WPS 扩展图表：线/柱/饼/环/面积/散点/气泡/雷达/地图）、渐变填充、阴影、背景图/填充 |
-| Excel | `.xlsx` | 完整支持 | 多工作表切换、单元格值（共享字符串/内联字符串/布尔）、单元格样式（字体/填充/边框/对齐）、合并单元格、列宽行高、浮动图片、浮动图表 |
-| Word | `.docx` | 完整支持 | 段落（富文本）、表格、内联图片（DrawingML）、内联图表、VML 形状（矩形/椭圆/自定义路径）、WPG 组合形状、超链接、段落边框/底纹、样式继承、主题色解析 |
-| Word 97-2003 / WPS | `.doc` / `.wps` | 降级预览 | OLE/CFB 二进制格式解析（FIB/Piece Table/FKP/SPRM）、嵌入图片提取（PNG/JPEG）、纯文本回退。复杂排版和图文定位为近似效果 |
+## 主要特性
+
+- 统一的文件选择、加载、错误、空状态、缩放和全屏交互
+- 支持本地 `File`、远程 URL、`Blob`、`Response` 和异步文件来源
+- 切换 `uri` 时自动取消旧下载，并忽略已经过期的解析结果
+- 兼容 antd v4、v5、v6，继承宿主项目的 `ConfigProvider`
+- 功能性图标由组件内置 SVG 提供，不依赖 `@ant-design/icons`
+- OOXML 文件完全在浏览器内解包和解析，ZIP 条目读取并发数固定为 4
+- 图表按需加载；渲染或地图数据加载失败时优先回退到文档快照
+
+## 安装
+
+```bash
+yarn add office-x-viewer antd react react-dom
+```
+
+`react`、`react-dom` 和 `antd` 由宿主项目提供。`echarts` 与 `jszip` 是组件自身的运行时依赖。
+
+宿主构建工具需要支持 `.less` 文件，因为组件样式随模块一起导入。
+
+## 版本兼容
+
+| antd 版本           | React / ReactDOM | 支持状态 | 说明                              |
+| ------------------- | ---------------- | -------- | --------------------------------- |
+| `4.24.x`            | `>=16.9.0`       | 支持     | 宿主入口需要加载 antd v4 全局样式 |
+| `5.x`               | `>=16.9.0`       | 支持     | 使用 antd v5 的样式机制           |
+| `6.x`               | `>=18.0.0`       | 支持     | React 版本要求来自 antd v6        |
+| `6.x` + React 16/17 | -                | 不支持   | 不满足 antd v6 自身要求           |
+
+当前 peerDependencies 范围：
+
+```text
+antd: >=4.24.0 <7.0.0
+react: >=16.9.0
+react-dom: >=16.9.0
+```
+
+React 的 peer 下限用于兼容 antd v4/v5 宿主项目，并不代表 antd v6 可以运行在 React 16/17 上。
+
+使用 antd v4 时，在宿主应用入口加载全局样式：
+
+```tsx
+import 'antd/dist/antd.css';
+```
+
+antd v5、v6 不需要导入上述文件。组件不会创建额外的根级 `ConfigProvider`，主题、语言和组件前缀由宿主配置决定。
 
 ## 基本用法
 
 ```tsx
-import { OfficeViewer } from './office-viewer';
+import { OfficeViewer } from 'office-x-viewer';
 
-// 基础用法 - 用户手动选择本地文件
-<OfficeViewer />
-
-// 预设文件或远程地址
-<OfficeViewer uri={file} />
-<OfficeViewer uri="https://example.com/demo.pptx" />
-
-// 懒加载文件来源
-<OfficeViewer uri={async () => fetch('/demo.xlsx')} />
-
-// 带回调
-<OfficeViewer
-  onFileParsed={(parsed, file) => console.log('解析完成', parsed.kind)}
-  onError={(err) => console.error(err)}
-/>
+export default function OfficePreview() {
+  return <OfficeViewer />;
+}
 ```
+
+传入本地文件或远程地址：
+
+```tsx
+import { OfficeViewer } from 'office-x-viewer';
+
+export default function OfficePreview({ file }: { file: File }) {
+  return (
+    <>
+      <OfficeViewer uri={file} />
+      <OfficeViewer uri="https://example.com/files/demo.pptx" />
+    </>
+  );
+}
+```
+
+使用异步文件来源和回调：
+
+```tsx
+import { OfficeViewer } from 'office-x-viewer';
+
+export default function OfficePreview() {
+  return (
+    <OfficeViewer
+      uri={async () => fetch('/files/demo.xlsx')}
+      onFileParsed={(parsed, file) => {
+        console.info('解析完成', parsed.kind, file.name);
+      }}
+      onError={(error, file) => {
+        console.error('预览失败', file?.name, error);
+      }}
+    />
+  );
+}
+```
+
+## `uri` 文件来源
+
+`uri` 支持以下形式：
+
+```ts
+type OfficeViewerUri =
+  | File
+  | string
+  | (() => Promise<File | Blob | string | Response>);
+```
+
+使用远程文件时需要注意：
+
+- 跨域地址必须允许浏览器通过 CORS 访问。
+- URL 最好包含受支持的文件扩展名。
+- 无扩展名地址需要通过 `Content-Disposition` 文件名或响应 `Content-Type` 识别格式。
+- 带有不受支持扩展名的 URL 会在下载前被拒绝，即使响应内容实际是 Office 文件。
+- `uri` 变化时，旧的 URL 下载会通过 `AbortController` 取消；自定义异步函数本身无法被强制取消，但其过期结果不会覆盖新文件。
+- 用户手动选择文件时，同样会终止当前远程下载并使旧解析结果失效。
 
 ## Props
 
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `uri` | `File \| string \| (() => Promise<File \| Blob \| string \| Response>)` | - | 预加载文件来源。`File` 直接解析，`string` 视为 URL 下载后解析，函数用于懒加载文件来源 |
-| `defaultFileName` | `string` | `'未加载文件'` | 未选择文件时显示的文件名 |
-| `defaultPreviewKind` | `PreviewKind` | `'pptx'` | 默认预览格式（无文件时） |
-| `defaultZoom` | `number` | `100` | 默认缩放比例 |
-| `className` | `string` | - | 自定义类名 |
-| `style` | `CSSProperties` | - | 自定义样式 |
-| `onFileParsed` | `(parsed, file) => void` | - | 文件解析成功回调 |
-| `onError` | `(error, file?) => void` | - | 解析失败回调 |
+| 属性                 | 类型                                             | 默认值         | 说明                                     |
+| -------------------- | ------------------------------------------------ | -------------- | ---------------------------------------- |
+| `uri`                | `OfficeViewerUri`                                | -              | 预加载文件来源                           |
+| `defaultFileName`    | `string`                                         | `'未加载文件'` | 未选择文件时显示的文件名                 |
+| `defaultPreviewKind` | `'pptx' \| 'xlsx' \| 'docx' \| 'doc'`            | `'pptx'`       | 无文件时使用的默认预览类型               |
+| `defaultZoom`        | `number`                                         | `100`          | 默认缩放百分比，最终限制在 `25` 至 `300` |
+| `className`          | `string`                                         | -              | 根容器自定义类名                         |
+| `style`              | `CSSProperties`                                  | -              | 根容器自定义样式                         |
+| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | 文件解析成功回调                         |
+| `onError`            | `(error: Error, file?: File) => void`            | -              | 下载、解析或全屏操作失败回调             |
 
-## 目录结构
+公开导出的类型包括：
 
-```
-src/office-viewer/
-├── index.ts                    # 模块入口，导出 OfficeViewer 组件和类型
-├── index.less                  # 全局布局样式
-├── OfficeViewer.tsx            # 主编排组件，管理文件状态/解析/缩放/翻页
-│
-├── shell/                      # 应用外壳（所有格式共用的 UI 框架）
-│   ├── PreviewStage.tsx        #   路由分发，懒加载对应格式的 Viewer
-│   ├── Toolbar.tsx             #   顶部工具栏：文件上传/翻页/缩放/全屏
-│   ├── Loading.tsx             #   加载中状态（居中 Spinner）
-│   ├── Error.tsx               #   错误提示
-│   ├── Empty.tsx               #   空状态占位（按格式显示不同提示语）
-│   └── constants.ts            #   共享常量：工具栏高度(56px)、缩放级别(50-300%)
-│
-├── services/                   # 解析层 - 将二进制文件解析为 TypeScript 模型
-│   ├── preview.ts              #   格式检测（按扩展名）& 动态分发到对应解析器
-│   ├── doc/                    #   .doc 解析器
-│   │   ├── parseDoc.ts         #     OLE/CFB 二进制解析：FAT/目录/FIB/Piece Table/FKP/SPRM/字体表/嵌入图片
-│   │   └── types.ts            #     DOC 模型类型定义
-│   ├── docx/                   #   .docx 解析器
-│   │   ├── parseDocx.ts        #     OOXML ZIP 解析：样式/主题/段落/表格/Drawing/VML/WPS图表
-│   │   ├── types.ts            #     DOCX 模型类型定义
-│   │   └── archive.ts          #     共享 ZIP 加载器的重导出
-│   ├── pptx/                   #   .pptx 解析器
-│   │   ├── parsePptx.ts        #     OOXML ZIP 解析：母版/布局/占位符继承/视觉元素/图表/表格/WPS扩展
-│   │   ├── types.ts            #     PPTX 模型类型定义
-│   │   ├── colors.ts           #     OOXML 颜色工具：hex标准化/主题色解析/tint/shade/lumMod/lumOff
-│   │   └── mediaBase64/        #     预编码媒体资源（保留目录）
-│   └── xlsx/                   #   .xlsx 解析器
-│       ├── parseXlsx.ts        #     OOXML ZIP 解析：共享字符串/样式表/单元格/合并区域/浮动图片/图表
-│       ├── types.ts            #     XLSX 模型类型定义
-│       └── archive.ts          #     共享 ZIP 加载器的重导出
-│
-├── formats/                    # 渲染层 - 将解析模型渲染为 React 组件
-│   ├── doc/                    #   DOC 渲染
-│   │   ├── DocViewer.tsx       #     顶层组件：标题/统计/警告/滚动页面/图片画廊
-│   │   ├── DocContentRenderer.tsx  #  内容块分发：段落/表格/列表
-│   │   ├── DocParagraphBlock.tsx   #  段落渲染（内联文本和图片）
-│   │   ├── DocTableBlock.tsx   #     表格渲染（带样式的单元格）
-│   │   ├── DocListBlock.tsx    #     列表渲染（有序/无序）
-│   │   ├── DocInlineContent.tsx    #  内联元素渲染（文本样式/图片）
-│   │   ├── DocImageGallery.tsx #     未锚定图片的画廊展示
-│   │   ├── DocPageFrame.tsx    #     页面框架（尺寸/边距/缩放）
-│   │   └── ...
-│   ├── docx/                   #   DOCX 渲染
-│   │   ├── DocxViewer.tsx      #     顶层组件：标题/统计/滚动页面
-│   │   ├── DocxParagraph.tsx   #     段落渲染（富文本内联内容）
-│   │   ├── DocxTableBlock.tsx  #     表格渲染（单元格样式/嵌套块内容）
-│   │   ├── DocxImage.tsx       #     内联图片渲染
-│   │   ├── DocxChartBlock.tsx  #     内联图表渲染（通过 OfficeChartView）
-│   │   ├── DocxShape.tsx       #     形状渲染（VML/DrawingML，含文本框/填充/描边）
-│   │   ├── DocxPageFrame.tsx   #     页面框架（尺寸/边距/边框/缩放）
-│   │   └── ...
-│   ├── pptx/                   #   PPTX 渲染
-│   │   ├── PptxViewer.tsx      #     顶层组件：双面板布局（缩略图侧栏 + 幻灯片视口）
-│   │   ├── PptxSlideViewport.tsx   # 幻灯片视口（滚动/缩放）
-│   │   ├── PptxSlide.tsx       #     单张幻灯片渲染（背景 + 元素分发）
-│   │   ├── PptxThumbnailPane.tsx   # 缩略图侧栏（可滚动列表 + 页码）
-│   │   ├── PptxThumbnail.tsx   #     单个缩略图（复用 PptxSlide 缩小渲染）
-│   │   └── renderers/          #     专用元素渲染器
-│   │       ├── TextRenderer.tsx    # 文本框：形状填充/渐变/段落样式/项目符号
-│   │       ├── ShapeRenderer.tsx   # 预设/自定义几何形状
-│   │       ├── ImageRenderer.tsx   # 图片：裁剪/旋转/翻转变换
-│   │       ├── TableRenderer.tsx   # 表格网格：单元格填充/边框/文本
-│   │       ├── UnsupportedRenderer.tsx  # 不支持元素的占位显示
-│   │       ├── paint.ts        #     颜色/渐变到 CSS/SVG 的转换工具
-│   │       └── renderIds.ts    #     稳定 SVG ID 生成（避免缩略图/视口冲突）
-│   └── xlsx/                   #   XLSX 渲染
-│       ├── XlsxViewer.tsx      #     顶层组件：工作表标签 + 活动工作表网格
-│       ├── XlsxSheetGrid.tsx   #     可滚动画布（表格 + 浮动图片 + 浮动图表）
-│       ├── XlsxSheetTable.tsx  #     单元格网格渲染（表头/合并单元格/单元格样式）
-│       ├── XlsxSheetTabs.tsx   #     底部工作表切换标签栏
-│       ├── XlsxFloatingImages.tsx  # 锚定到单元格位置的浮动图片
-│       ├── XlsxFloatingCharts.tsx  # 锚定到单元格位置的浮动图表
-│       └── sheetRenderUtils.ts #     工作表画布尺寸计算工具
-│
-└── shared/                     # 共享工具
-    ├── ooxml/                  #   OOXML 底层解析工具（所有格式共用）
-    │   ├── archive.ts          #     JSZip 解包：返回 Map<string, string | Uint8Array>，提供 readXml/readBinary
-    │   ├── xml.ts              #     DOMParser XML 工具：命名空间感知的元素遍历/属性读取/文本提取
-    │   ├── units.ts            #     单位换算：EMU -> px（1英寸 = 914400 EMU = 96px）
-    │   ├── relationships.ts    #     .rels 关系文件解析（链接 OOXML 各部分）
-    │   ├── media.ts            #     媒体文件收集：从 ZIP 提取图片，转为 base64 data URL
-    │   ├── theme.ts            #     主题 XML 解析：颜色方案/字体方案/主题色引用解析
-    │   └── charts.ts           #     图表 XML 解析：OfficeChartModel 中间表示 -> ECharts 配置
-    │                           #     支持：线/柱(垂直/水平)/饼/环/面积/散点/气泡/雷达/复合饼图/地图
-    └── chart/                  #   图表渲染组件
-        ├── OfficeChartView.tsx #     ECharts 图表组件：懒加载/IntersectionObserver 延迟渲染/地图 GeoJSON/ResizeObserver
-        └── index.less          #     图表容器样式
+```ts
+import type {
+  OfficeViewerProps,
+  OfficeViewerUri,
+  ParsedOfficeFile,
+  PreviewKind,
+} from 'office-x-viewer';
 ```
 
-## 整体架构
+## 支持格式
 
-采用三层分离设计，数据流为：
+| 格式               | 扩展名          | 支持程度     | 主要能力                                                                  |
+| ------------------ | --------------- | ------------ | ------------------------------------------------------------------------- |
+| PowerPoint         | `.pptx`         | 主要能力支持 | 母版与布局继承、文本、形状、图片、表格、背景、渐变、阴影、Office/WPS 图表 |
+| Excel              | `.xlsx`         | 主要能力支持 | 多工作表、单元格内容与样式、合并单元格、行列尺寸、浮动图片和图表          |
+| Word               | `.docx`         | 主要能力支持 | 富文本段落、表格、图片、图表、VML/WPG 形状、超链接、样式与主题色          |
+| Word 97-2003 / WPS | `.doc` / `.wps` | 降级预览     | OLE/CFB、FIB、Piece Table、FKP、SPRM、PNG/JPEG 提取和纯文本回退           |
 
+PPTX/WPS 扩展图表当前覆盖线图、柱图、饼图、环形图、面积图、散点图、气泡图、雷达图和地图等常见类型。非标准扩展或损坏数据会尽量使用文档内快照，无法降级时显示明确空状态。
+
+## 交互说明
+
+- 缩放范围为 `25%` 至 `300%`，工具栏快捷档位为 `50%`、`75%`、`100%`、`125%`、`150%`、`200%`。
+- PPTX 支持幻灯片翻页和缩略图导航。
+- XLSX 支持工作表标签切换。
+- 全屏按钮依赖浏览器 Fullscreen API；不支持时按钮会禁用，按 `Esc` 退出后状态会自动同步。
+- 地图图表可能需要加载外部 GeoJSON；网络失败时优先显示文档快照，否则显示加载失败状态。
+
+## 使用边界
+
+- 组件面向现代浏览器，依赖 `File`、`fetch`、`DOMParser`、`AbortController`、`IntersectionObserver`、`ResizeObserver` 和 Fullscreen API 等浏览器能力。
+- 所有解析均在主机浏览器内完成，大文件会占用较多内存和 CPU。
+- ZIP 读取仅限制并发数，不限制输入文件大小、条目数量、单个条目或累计解压大小。面向不可信文件时，建议由宿主或服务端增加业务侧校验。
+- DOC/WPS 属于旧二进制格式，目前以内容可读为目标，不保证复杂分页、锚点、图文环绕和排版与 Office 完全一致。
+- OOXML 文档也可能使用未覆盖的厂商扩展，复杂效果与 Microsoft Office/WPS 的原生渲染可能存在差异。
+
+## 项目结构
+
+```text
+src/
+├── index.ts
+└── office-viewer/
+    ├── OfficeViewer.tsx      # 对外主组件与文件加载编排
+    ├── shell/                # 工具栏、预览分发和通用状态
+    ├── services/             # DOC、DOCX、PPTX、XLSX 解析器
+    ├── formats/              # 各文档格式的 React 渲染器
+    └── shared/
+        ├── ooxml/            # ZIP、XML、关系、主题、媒体和图表适配
+        │   └── wpsChart.ts   # DOCX/PPTX 共用的 WPS 图表转换
+        └── chart/            # ECharts 渲染和失败降级
 ```
-文件上传 → 格式检测(services/preview.ts) → 对应解析器(services/*) → TypeScript 模型 → 对应渲染器(formats/*) → 页面展示
+
+数据流：
+
+```text
+文件来源
+  → 格式检测
+  → 对应解析器
+  → TypeScript 文档模型
+  → 对应 React 渲染器
+  → 浏览器页面
 ```
 
-- **Shell 层** (`shell/`)：通用外壳 UI，负责工具栏交互、路由分发、加载/错误/空状态展示
-- **Services 层** (`services/`)：各格式解析器，将二进制文件解析为结构化 TypeScript 模型
-- **Formats 层** (`formats/`)：各格式渲染器，将模型渲染为 React 组件
-- **Shared 层** (`shared/`)：OOXML 底层工具和图表渲染，被 Services 和 Formats 共用
+## 本地开发
+
+```bash
+yarn
+yarn start
+```
+
+构建组件库和文档：
+
+```bash
+yarn build
+yarn docs:build
+```
+
+项目当前使用 ESLint、Stylelint、Prettier 和 TypeScript 进行静态检查。发布前建议同时在 antd v4、v5、v6 宿主项目中验证本地文件、远程 URI、全屏和各格式示例文档。

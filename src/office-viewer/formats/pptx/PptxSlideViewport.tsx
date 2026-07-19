@@ -1,5 +1,5 @@
 // PptxSlideViewport 渲染当前幻灯片的滚动视口，并在翻页或缩放时复位滚动位置。
-import { memo, useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
 
@@ -9,7 +9,11 @@ type PptxSlideViewportProps = {
   zoom: number;
 };
 
-function PptxSlideViewportComponent({ slide, activeIndex, zoom }: PptxSlideViewportProps) {
+function PptxSlideViewportComponent({
+  slide,
+  activeIndex,
+  zoom,
+}: PptxSlideViewportProps) {
   const viewportRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -19,7 +23,13 @@ function PptxSlideViewportComponent({ slide, activeIndex, zoom }: PptxSlideViewp
   return (
     <section ref={viewportRef} className="oxv-pptx-viewer__viewport">
       <div className="oxv-pptx-viewer__slide-wrap">
-        {slide ? <PptxSlide slide={slide} zoom={zoom} renderKey={`slide-${slide.id}`} /> : null}
+        {slide ? (
+          <PptxSlide
+            slide={slide}
+            zoom={zoom}
+            renderKey={`slide-${slide.id}`}
+          />
+        ) : null}
       </div>
     </section>
   );

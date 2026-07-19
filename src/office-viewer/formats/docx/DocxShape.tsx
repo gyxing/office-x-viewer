@@ -1,6 +1,6 @@
 // DocxShape 渲染 DOCX 行内形状，支持矩形、椭圆、线条、自定义路径和形状内文字。
-import { memo, useCallback, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import type { DocxInline } from '../../services/docx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
@@ -11,32 +11,43 @@ type DocxShapeProps = {
   inline: Extract<DocxInline, { type: 'shape' }>;
 };
 
+// 自定义变量把解析后的形状尺寸交给 Less，保持定位样式的类型约束。
+type DocxShapeStyle = CSSProperties & {
+  '--oxv-docx-shape-width': string;
+  '--oxv-docx-shape-height': string;
+};
+
 function DocxShapeComponent({ inline }: DocxShapeProps) {
   const shape = inline.shape;
   const positionStyle = calculatePositionStyle(shape.position);
 
-  const shapeStyle = useMemo<CSSProperties>(
-    () => {
-      return {
-        '--oxv-docx-shape-width': `${shape.width}px`,
-        '--oxv-docx-shape-height': `${shape.height}px`,
-        ...positionStyle,
-        zIndex: positionStyle.zIndex,
-        maxWidth: shape.position ? 'none' : undefined,
-        margin: shape.position ? 0 : undefined,
-      } as CSSProperties;
-    },
-    [positionStyle, shape.height, shape.position, shape.width],
-  );
+  const shapeStyle = useMemo<DocxShapeStyle>(() => {
+    return {
+      '--oxv-docx-shape-width': `${shape.width}px`,
+      '--oxv-docx-shape-height': `${shape.height}px`,
+      ...positionStyle,
+      zIndex: positionStyle.zIndex,
+      maxWidth: shape.position ? 'none' : undefined,
+      margin: shape.position ? 0 : undefined,
+    };
+  }, [positionStyle, shape.height, shape.position, shape.width]);
   const justifyContent = useCallback(
     (align?: 'top' | 'middle' | 'bottom') =>
-      align === 'middle' ? 'center' : align === 'bottom' ? 'flex-end' : 'flex-start',
+      align === 'middle'
+        ? 'center'
+        : align === 'bottom'
+        ? 'flex-end'
+        : 'flex-start',
     [],
   );
-  const shapePath = useCallback((item: typeof shape.items[number]) => {
+  const shapePath = useCallback((item: (typeof shape.items)[number]) => {
     if (item.path) return item.path;
     if (item.kind === 'ellipse') {
-      return `M ${item.width / 2} 0 A ${item.width / 2} ${item.height / 2} 0 1 0 ${item.width / 2} ${item.height} A ${item.width / 2} ${item.height / 2} 0 1 0 ${item.width / 2} 0`;
+      return `M ${item.width / 2} 0 A ${item.width / 2} ${
+        item.height / 2
+      } 0 1 0 ${item.width / 2} ${item.height} A ${item.width / 2} ${
+        item.height / 2
+      } 0 1 0 ${item.width / 2} 0`;
     }
     return undefined;
   }, []);
@@ -59,7 +70,9 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
                 : { width: item.width, height: item.height }),
               justifyContent: justifyContent(item.textVerticalAlign),
               background: drawAsSvg ? undefined : item.fillColor,
-              backgroundImage: item.imageSrc ? `url(${item.imageSrc})` : undefined,
+              backgroundImage: item.imageSrc
+                ? `url(${item.imageSrc})`
+                : undefined,
               backgroundSize: item.imageSrc ? '100% 100%' : undefined,
               backgroundRepeat: item.imageSrc ? 'no-repeat' : undefined,
               border: drawAsSvg ? undefined : item.border,
@@ -76,7 +89,10 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
             {path ? (
               <svg
                 className="oxv-docx-shape__svg"
-                viewBox={item.viewBox ?? `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`}
+                viewBox={
+                  item.viewBox ??
+                  `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`
+                }
                 preserveAspectRatio="none"
               >
                 <path
@@ -91,10 +107,19 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
             ) : null}
             {(item.blocks ?? item.paragraphs)?.map((block) =>
               block.type === 'table' ? (
-                <DocxTableBlock key={block.id} block={block} availableWidth={item.width} />
+                <DocxTableBlock
+                  key={block.id}
+                  block={block}
+                  availableWidth={item.width}
+                />
               ) : block.type === 'chart' ? (
                 <div key={block.id} className="oxv-docx-table-block__chart">
-                  <OfficeChartView chart={block.chart} width={block.width} height={block.height} zoom={100} />
+                  <OfficeChartView
+                    chart={block.chart}
+                    width={block.width}
+                    height={block.height}
+                    zoom={100}
+                  />
                 </div>
               ) : (
                 <DocxParagraph key={block.id} block={block} compact asDiv />

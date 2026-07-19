@@ -41,8 +41,9 @@
 .oxv-docx-page-frame__article {
   box-sizing: border-box;
   background: #fff;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
+    sans-serif;
   letter-spacing: 0;
   overflow: hidden;
   transform-origin: top left;
@@ -51,7 +52,7 @@
   position: relative;
 
   // 确保定位元素不会被裁剪（在某些情况下）
-  &:has([style*="position: absolute"]) {
+  &:has([style*='position: absolute']) {
     overflow: visible;
   }
 }
@@ -59,7 +60,7 @@
 .oxv-docx-table-block {
   margin: 0;
 
-  &[style*="position: absolute"] {
+  &[style*='position: absolute'] {
     display: block;
     max-width: none;
   }
@@ -69,13 +70,15 @@
   table-layout: fixed;
   color: #000;
   font-size: 13px;
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
+    sans-serif;
   border-collapse: collapse;
 }
 
 .oxv-docx-table-block__cell {
   color: #000;
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
+    sans-serif;
 }
 
 .oxv-docx-chart-block,
@@ -95,7 +98,7 @@
   vertical-align: middle;
   object-fit: contain;
 
-  &[style*="position: absolute"] {
+  &[style*='position: absolute'] {
     max-width: none;
   }
 }
@@ -118,7 +121,7 @@
   height: var(--oxv-docx-shape-height);
   margin: 8px 0;
 
-  &[style*="position: absolute"] {
+  &[style*='position: absolute'] {
     margin: 0;
     max-width: none;
   }

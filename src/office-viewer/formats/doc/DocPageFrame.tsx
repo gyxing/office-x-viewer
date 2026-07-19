@@ -1,6 +1,6 @@
 // DocPageFrame 提供 DOC 降级预览的页面框架，负责页面尺寸、页边距和缩放。
-import { memo, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocPage } from '../../services/doc/types';
 
 type DocPageFrameProps = {
@@ -26,7 +26,15 @@ function DocPageFrameComponent({ page, zoom, children }: DocPageFrameProps) {
       padding: `${page.marginTop}px ${page.marginRight}px ${page.marginBottom}px ${page.marginLeft}px`,
       transform: `scale(${scale})`,
     }),
-    [page.marginBottom, page.marginLeft, page.marginRight, page.marginTop, page.minHeight, page.width, scale],
+    [
+      page.marginBottom,
+      page.marginLeft,
+      page.marginRight,
+      page.marginTop,
+      page.minHeight,
+      page.width,
+      scale,
+    ],
   );
 
   return (

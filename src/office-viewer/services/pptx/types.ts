@@ -189,7 +189,7 @@ export type ShadowStyle = {
   offsetY?: number;
 };
 
-export type SlideElement = 
+export type SlideElement =
   | TextElement
   | ShapeElement
   | ImageElement

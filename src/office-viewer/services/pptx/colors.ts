@@ -31,7 +31,9 @@ export function resolveThemeColor(name: string | undefined, theme: ThemeModel) {
   }
 
   const mapped = theme.colorMap?.[name] ?? name;
-  return toHexColor(theme.colorScheme[mapped] ?? theme.colorScheme[name] ?? mapped);
+  return toHexColor(
+    theme.colorScheme[mapped] ?? theme.colorScheme[name] ?? mapped,
+  );
 }
 
 function clamp255(value: number) {
@@ -58,7 +60,10 @@ function rgbToHex(r: number, g: number, b: number) {
     .join('')}`;
 }
 
-export function transformColor(hex: string | undefined, transforms: Array<{ type: string; val: number }>) {
+export function transformColor(
+  hex: string | undefined,
+  transforms: Array<{ type: string; val: number }>,
+) {
   if (!hex) {
     return undefined;
   }

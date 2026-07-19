@@ -1,5 +1,5 @@
 // DocBlockRenderer 根据 DOC 块类型分发到段落、列表或表格渲染组件。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { DocBlock } from '../../services/doc/types';
 import { DocListBlock } from './DocListBlock';
 import { DocParagraphBlock } from './DocParagraphBlock';

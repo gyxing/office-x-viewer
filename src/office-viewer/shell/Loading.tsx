@@ -1,6 +1,6 @@
 // OfficeLoading 展示文件解析中的统一加载状态。
 import { Spin } from 'antd';
-import { memo } from 'react';
+import React, { memo } from 'react';
 
 type OfficeLoadingProps = {
   tip?: string;

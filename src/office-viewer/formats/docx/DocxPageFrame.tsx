@@ -1,6 +1,6 @@
 // DocxPageFrame 提供 DOCX 页面框架，负责页宽、页高、页边距、边框和缩放。
-import { memo, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocxPage } from '../../services/docx/types';
 
 type DocxPageFrameProps = {
@@ -20,23 +20,24 @@ function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
     [page.minHeight, page.width, scale],
   );
   const articleStyle = useMemo<CSSProperties>(
-    () => ({
-      position: 'relative',
-      '--oxv-docx-page-width': `${page.width}px`,
-      '--oxv-docx-page-height': `${page.minHeight}px`,
-      '--oxv-docx-page-margin-top': `${page.marginTop}px`,
-      '--oxv-docx-page-margin-right': `${page.marginRight}px`,
-      '--oxv-docx-page-margin-bottom': `${page.marginBottom}px`,
-      '--oxv-docx-page-margin-left': `${page.marginLeft}px`,
-      width: page.width,
-      minHeight: page.minHeight,
-      padding: `${page.marginTop}px ${page.marginRight}px ${page.marginBottom}px ${page.marginLeft}px`,
-      borderTop: page.borderTop,
-      borderRight: page.borderRight,
-      borderBottom: page.borderBottom,
-      borderLeft: page.borderLeft,
-      transform: `scale(${scale})`,
-    }) as CSSProperties,
+    () =>
+      ({
+        position: 'relative',
+        '--oxv-docx-page-width': `${page.width}px`,
+        '--oxv-docx-page-height': `${page.minHeight}px`,
+        '--oxv-docx-page-margin-top': `${page.marginTop}px`,
+        '--oxv-docx-page-margin-right': `${page.marginRight}px`,
+        '--oxv-docx-page-margin-bottom': `${page.marginBottom}px`,
+        '--oxv-docx-page-margin-left': `${page.marginLeft}px`,
+        width: page.width,
+        minHeight: page.minHeight,
+        padding: `${page.marginTop}px ${page.marginRight}px ${page.marginBottom}px ${page.marginLeft}px`,
+        borderTop: page.borderTop,
+        borderRight: page.borderRight,
+        borderBottom: page.borderBottom,
+        borderLeft: page.borderLeft,
+        transform: `scale(${scale})`,
+      } as CSSProperties),
     [
       page.borderBottom,
       page.borderLeft,

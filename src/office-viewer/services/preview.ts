@@ -12,11 +12,19 @@ export type ParsedOfficeFile =
   | { kind: 'docx'; document: DocxDocument }
   | { kind: 'doc'; document: DocDocument };
 
-export const SUPPORTED_OFFICE_EXTENSIONS = ['.pptx', '.xlsx', '.docx', '.doc', '.wps'] as const;
+export const SUPPORTED_OFFICE_EXTENSIONS = [
+  '.pptx',
+  '.xlsx',
+  '.docx',
+  '.doc',
+  '.wps',
+] as const;
 
 export function isSupportedOfficeFileName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
-  return SUPPORTED_OFFICE_EXTENSIONS.some((extension) => lower.endsWith(extension));
+  return SUPPORTED_OFFICE_EXTENSIONS.some((extension) =>
+    lower.endsWith(extension),
+  );
 }
 
 export function detectPreviewKind(fileName: string): PreviewKind {

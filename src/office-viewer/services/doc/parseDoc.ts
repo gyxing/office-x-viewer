@@ -43,12 +43,6 @@ type DocParagraphRun = {
   style: DocTextStyle;
 };
 
-type DocTableRun = {
-  fcStart: number;
-  fcEnd: number;
-  style: DocTableStyle;
-};
-
 type DocTextSegment = {
   text: string;
   style?: DocTextStyle;
@@ -105,7 +99,8 @@ const DEFAULT_DOC_PAGE = {
   marginLeft: 120,
 };
 
-const DOC_FONT_FAMILY = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
+const DOC_FONT_FAMILY =
+  '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
 const WORD_ICO_COLORS: Record<number, string> = {
   1: '#000000',
   2: '#0000ff',
@@ -125,7 +120,9 @@ const WORD_ICO_COLORS: Record<number, string> = {
   16: '#c0c0c0',
 };
 
-function isBlobInput(file: File | Blob | ArrayBuffer | Uint8Array): file is File | Blob {
+function isBlobInput(
+  file: File | Blob | ArrayBuffer | Uint8Array,
+): file is File | Blob {
   return typeof Blob !== 'undefined' && file instanceof Blob;
 }
 
@@ -185,12 +182,22 @@ function concatChunks(chunks: Uint8Array[]) {
   return result;
 }
 
-function readSectorChain(startSector: number, fat: number[], bytes: Uint8Array, sectorSize: number) {
+function readSectorChain(
+  startSector: number,
+  fat: number[],
+  bytes: Uint8Array,
+  sectorSize: number,
+) {
   const chunks: Uint8Array[] = [];
   const seen = new Set<number>();
   let sector = startSector;
 
-  while (sector !== END_OF_CHAIN && sector !== FREE_SECTOR && sector < fat.length && !seen.has(sector)) {
+  while (
+    sector !== END_OF_CHAIN &&
+    sector !== FREE_SECTOR &&
+    sector < fat.length &&
+    !seen.has(sector)
+  ) {
     seen.add(sector);
     chunks.push(sliceSector(bytes, sector, sectorSize));
     sector = fat[sector] ?? END_OF_CHAIN;
@@ -199,12 +206,22 @@ function readSectorChain(startSector: number, fat: number[], bytes: Uint8Array, 
   return concatChunks(chunks);
 }
 
-function readMiniSectorChain(startSector: number, miniFat: number[], miniStream: Uint8Array, miniSectorSize: number) {
+function readMiniSectorChain(
+  startSector: number,
+  miniFat: number[],
+  miniStream: Uint8Array,
+  miniSectorSize: number,
+) {
   const chunks: Uint8Array[] = [];
   const seen = new Set<number>();
   let sector = startSector;
 
-  while (sector !== END_OF_CHAIN && sector !== FREE_SECTOR && sector < miniFat.length && !seen.has(sector)) {
+  while (
+    sector !== END_OF_CHAIN &&
+    sector !== FREE_SECTOR &&
+    sector < miniFat.length &&
+    !seen.has(sector)
+  ) {
     seen.add(sector);
     const offset = sector * miniSectorSize;
     chunks.push(miniStream.slice(offset, offset + miniSectorSize));
@@ -231,7 +248,11 @@ function parseDirectoryEntries(directoryStream: Uint8Array) {
 
   for (let offset = 0; offset + 128 <= directoryStream.length; offset += 128) {
     const entryBytes = directoryStream.slice(offset, offset + 128);
-    const view = new DataView(entryBytes.buffer, entryBytes.byteOffset, entryBytes.byteLength);
+    const view = new DataView(
+      entryBytes.buffer,
+      entryBytes.byteOffset,
+      entryBytes.byteLength,
+    );
     const nameLength = readUint16(view, 64);
     const name = decodeUtf16Name(entryBytes.slice(0, 64), nameLength);
     const objectType = entryBytes[66];
@@ -246,7 +267,11 @@ function parseDirectoryEntries(directoryStream: Uint8Array) {
   return entries;
 }
 
-function readDifatSectorEntries(bytes: Uint8Array, sector: number, sectorSize: number) {
+function readDifatSectorEntries(
+  bytes: Uint8Array,
+  sector: number,
+  sectorSize: number,
+) {
   const data = sliceSector(bytes, sector, sectorSize);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const values: number[] = [];
@@ -266,7 +291,12 @@ function readFat(bytes: Uint8Array, sectorSize: number, difat: number[]) {
   const fat: number[] = [];
 
   difat.forEach((sector) => {
-    if (sector === FREE_SECTOR || sector === END_OF_CHAIN || sector === FAT_SECTOR) return;
+    if (
+      sector === FREE_SECTOR ||
+      sector === END_OF_CHAIN ||
+      sector === FAT_SECTOR
+    )
+      return;
     const data = sliceSector(bytes, sector, sectorSize);
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     for (let offset = 0; offset + 4 <= data.length; offset += 4) {
@@ -277,10 +307,19 @@ function readFat(bytes: Uint8Array, sectorSize: number, difat: number[]) {
   return fat;
 }
 
-function readMiniFat(bytes: Uint8Array, startSector: number, sectorCount: number, fat: number[], sectorSize: number) {
+function readMiniFat(
+  bytes: Uint8Array,
+  startSector: number,
+  sectorCount: number,
+  fat: number[],
+  sectorSize: number,
+) {
   if (!sectorCount || startSector === END_OF_CHAIN) return [];
 
-  const data = readSectorChain(startSector, fat, bytes, sectorSize).slice(0, sectorCount * sectorSize);
+  const data = readSectorChain(startSector, fat, bytes, sectorSize).slice(
+    0,
+    sectorCount * sectorSize,
+  );
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const miniFat: number[] = [];
 
@@ -294,7 +333,9 @@ function readMiniFat(bytes: Uint8Array, startSector: number, sectorCount: number
 function parseCfb(bytes: Uint8Array): CfbFile {
   // CFB 先通过 FAT/miniFAT 还原各个 stream，后续 WordDocument/Table stream 才能继续解析。
   if (!isOleDoc(bytes)) {
-    throw new Error('\u4e0d\u662f\u6709\u6548\u7684 Word 97-2003 DOC \u6587\u4ef6');
+    throw new Error(
+      '\u4e0d\u662f\u6709\u6548\u7684 Word 97-2003 DOC \u6587\u4ef6',
+    );
   }
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -313,7 +354,11 @@ function parseCfb(bytes: Uint8Array): CfbFile {
   }
 
   let nextDifatSector = difatStartSector;
-  for (let index = 0; index < difatSectorCount && nextDifatSector !== END_OF_CHAIN; index += 1) {
+  for (
+    let index = 0;
+    index < difatSectorCount && nextDifatSector !== END_OF_CHAIN;
+    index += 1
+  ) {
     const sector = readDifatSectorEntries(bytes, nextDifatSector, sectorSize);
     sector.values.forEach((value) => {
       if (value !== FREE_SECTOR) difat.push(value);
@@ -322,22 +367,43 @@ function parseCfb(bytes: Uint8Array): CfbFile {
   }
 
   const fat = readFat(bytes, sectorSize, difat);
-  const directoryStream = readSectorChain(directoryStartSector, fat, bytes, sectorSize);
+  const directoryStream = readSectorChain(
+    directoryStartSector,
+    fat,
+    bytes,
+    sectorSize,
+  );
   const entries = parseDirectoryEntries(directoryStream);
   const root = entries.find((entry) => entry.objectType === 5);
   const miniStream =
     root && root.startSector !== END_OF_CHAIN
-      ? readSectorChain(root.startSector, fat, bytes, sectorSize).slice(0, root.streamSize)
+      ? readSectorChain(root.startSector, fat, bytes, sectorSize).slice(
+          0,
+          root.streamSize,
+        )
       : new Uint8Array();
-  const miniFat = readMiniFat(bytes, miniFatStartSector, miniFatSectorCount, fat, sectorSize);
+  const miniFat = readMiniFat(
+    bytes,
+    miniFatStartSector,
+    miniFatSectorCount,
+    fat,
+    sectorSize,
+  );
   const streams = new Map<string, Uint8Array>();
 
   entries
     .filter((entry) => entry.objectType === 2)
     .forEach((entry) => {
-      const isMiniStream = entry.streamSize < MINI_STREAM_CUTOFF_SIZE && entry.startSector !== END_OF_CHAIN;
+      const isMiniStream =
+        entry.streamSize < MINI_STREAM_CUTOFF_SIZE &&
+        entry.startSector !== END_OF_CHAIN;
       const data = isMiniStream
-        ? readMiniSectorChain(entry.startSector, miniFat, miniStream, miniSectorSize)
+        ? readMiniSectorChain(
+            entry.startSector,
+            miniFat,
+            miniStream,
+            miniSectorSize,
+          )
         : readSectorChain(entry.startSector, fat, bytes, sectorSize);
       streams.set(entry.name, data.slice(0, entry.streamSize));
     });
@@ -347,11 +413,22 @@ function parseCfb(bytes: Uint8Array): CfbFile {
 
 function readFibField(wordDocument: Uint8Array, offset: number) {
   if (offset + 4 > wordDocument.length) return 0;
-  return readUint32(new DataView(wordDocument.buffer, wordDocument.byteOffset, wordDocument.byteLength), offset);
+  return readUint32(
+    new DataView(
+      wordDocument.buffer,
+      wordDocument.byteOffset,
+      wordDocument.byteLength,
+    ),
+    offset,
+  );
 }
 
 function parseFib(wordDocument: Uint8Array) {
-  const view = new DataView(wordDocument.buffer, wordDocument.byteOffset, wordDocument.byteLength);
+  const view = new DataView(
+    wordDocument.buffer,
+    wordDocument.byteOffset,
+    wordDocument.byteLength,
+  );
   const flags = readUint16(view, 10);
 
   return {
@@ -399,7 +476,11 @@ function parsePieces(tableStream: Uint8Array, fib: DocFib) {
   if (!pieceTable) return [];
 
   const pieceCount = Math.floor((pieceTable.length - 4) / 12);
-  const view = new DataView(pieceTable.buffer, pieceTable.byteOffset, pieceTable.byteLength);
+  const view = new DataView(
+    pieceTable.buffer,
+    pieceTable.byteOffset,
+    pieceTable.byteLength,
+  );
   const pieces: DocPiece[] = [];
 
   for (let index = 0; index < pieceCount; index += 1) {
@@ -424,18 +505,24 @@ function quoteFontFamily(value: string | undefined) {
     .split(',')
     .map((font) => font.trim())
     .filter(Boolean)
-    .map((font) => (/^["'].*["']$/.test(font) || /^[a-z-]+$/i.test(font) ? font : `"${font}"`))
+    .map((font) =>
+      /^["'].*["']$/.test(font) || /^[a-z-]+$/i.test(font) ? font : `"${font}"`,
+    )
     .join(', ');
 }
 
 function parseFontTable(tableStream: Uint8Array, fib: DocFib): DocFontTable {
   if (!fib.fcSttbfFfn || !fib.lcbSttbfFfn) return [];
-  const data = tableStream.slice(fib.fcSttbfFfn, fib.fcSttbfFfn + fib.lcbSttbfFfn);
+  const data = tableStream.slice(
+    fib.fcSttbfFfn,
+    fib.fcSttbfFfn + fib.lcbSttbfFfn,
+  );
   if (data.length < 4) return [];
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const extended = readUint16(view, 0) === 0xffff;
-  const count = extended && data.length >= 6 ? readUint16(view, 2) : readUint16(view, 0);
+  const count =
+    extended && data.length >= 6 ? readUint16(view, 2) : readUint16(view, 0);
   const fonts: string[] = [];
   let offset = extended ? 6 : 4;
 
@@ -445,8 +532,13 @@ function parseFontTable(tableStream: Uint8Array, fib: DocFib): DocFontTable {
 
     const nameOffset = offset + 40;
     if (nameOffset < offset + size) {
-      const rawName = new TextDecoder('utf-16le').decode(data.slice(nameOffset, offset + size));
-      const name = rawName.split('\u0000')[0]?.replace(/\uFFFD/g, '').trim();
+      const rawName = new TextDecoder('utf-16le').decode(
+        data.slice(nameOffset, offset + size),
+      );
+      const name = rawName
+        .split('\u0000')[0]
+        ?.replace(/\uFFFD/g, '')
+        .trim();
       if (name) fonts.push(name);
     }
 
@@ -463,7 +555,10 @@ function plcItemCount(length: number, dataSize: number) {
 function parsePlcBteChpx(tableStream: Uint8Array, fib: DocFib) {
   if (!fib.fcPlcfBteChpx || !fib.lcbPlcfBteChpx) return [];
 
-  const data = tableStream.slice(fib.fcPlcfBteChpx, fib.fcPlcfBteChpx + fib.lcbPlcfBteChpx);
+  const data = tableStream.slice(
+    fib.fcPlcfBteChpx,
+    fib.fcPlcfBteChpx + fib.lcbPlcfBteChpx,
+  );
   const count = plcItemCount(data.length, 4);
   if (count <= 0) return [];
 
@@ -480,7 +575,10 @@ function parsePlcBteChpx(tableStream: Uint8Array, fib: DocFib) {
 function parsePlcBtePapx(tableStream: Uint8Array, fib: DocFib) {
   if (!fib.fcPlcfBtePapx || !fib.lcbPlcfBtePapx) return [];
 
-  const data = tableStream.slice(fib.fcPlcfBtePapx, fib.fcPlcfBtePapx + fib.lcbPlcfBtePapx);
+  const data = tableStream.slice(
+    fib.fcPlcfBtePapx,
+    fib.fcPlcfBtePapx + fib.lcbPlcfBtePapx,
+  );
   const count = plcItemCount(data.length, 4);
   if (count <= 0) return [];
 
@@ -494,23 +592,10 @@ function parsePlcBtePapx(tableStream: Uint8Array, fib: DocFib) {
   })).filter((item) => item.fcEnd > item.fcStart);
 }
 
-function parsePlcBteTapx(tableStream: Uint8Array, fib: DocFib) {
-  const fc = fib.fcPlcfBtePapx + fib.lcbPlcfBtePapx;
-  if (!fc) return [];
-
-  const data = tableStream.slice(fc, tableStream.length);
-  if (data.length < 8) return [];
-
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const count = Math.floor((data.length - 4) / 4);
-  return Array.from({ length: count }, (_, index) => ({
-    fcStart: readUint32(view, index * 4),
-    fcEnd: readUint32(view, (index + 1) * 4),
-    pn: readUint32(view, (count + 1) * 4 + index * 4) & 0x003fffff,
-  })).filter((item) => item.fcEnd > item.fcStart);
-}
-
-function mergeTextStyle(base: DocTextStyle | undefined, next: DocTextStyle | undefined): DocTextStyle | undefined {
+function mergeTextStyle(
+  base: DocTextStyle | undefined,
+  next: DocTextStyle | undefined,
+): DocTextStyle | undefined {
   if (!base && !next) return undefined;
   return {
     ...base,
@@ -518,11 +603,10 @@ function mergeTextStyle(base: DocTextStyle | undefined, next: DocTextStyle | und
   };
 }
 
-function firstDefined<T>(...values: Array<T | undefined>) {
-  return values.find((value) => value !== undefined);
-}
-
-function mergeStyleIntoTextStyle(base: DocTextStyle, override: DocTextStyle | undefined) {
+function mergeStyleIntoTextStyle(
+  base: DocTextStyle,
+  override: DocTextStyle | undefined,
+) {
   return {
     ...base,
     ...override,
@@ -547,24 +631,9 @@ function mergeStyleIntoTextStyle(base: DocTextStyle, override: DocTextStyle | un
   };
 }
 
-function blockStyleFromTextStyle(style: DocTextStyle | undefined): DocTextStyle | undefined {
-  if (!style) return undefined;
-  const blockStyle: DocTextStyle = {
-    textAlign: style.textAlign,
-    lineHeight: style.lineHeight,
-    indentLeft: style.indentLeft,
-    indentRight: style.indentRight,
-    firstLineIndent: style.firstLineIndent,
-    spacingBefore: style.spacingBefore,
-    spacingAfter: style.spacingAfter,
-  };
-  const cleaned = Object.fromEntries(
-    Object.entries(blockStyle).filter(([, value]) => value !== undefined),
-  ) as DocTextStyle;
-  return Object.keys(cleaned).length ? cleaned : undefined;
-}
-
-function tableCellTextStyle(style: DocTextStyle | undefined): DocTextStyle | undefined {
+function tableCellTextStyle(
+  style: DocTextStyle | undefined,
+): DocTextStyle | undefined {
   if (!style) return undefined;
   const cellTextStyle: DocTextStyle = {
     color: style.color,
@@ -582,15 +651,30 @@ function tableCellTextStyle(style: DocTextStyle | undefined): DocTextStyle | und
   return Object.keys(cleaned).length ? cleaned : undefined;
 }
 
-function mergeTextDecoration(style: DocTextStyle, decoration: string, enabled: boolean) {
-  const values = new Set((style.textDecoration ?? '').split(/\s+/).filter(Boolean));
+function mergeTextDecoration(
+  style: DocTextStyle,
+  decoration: string,
+  enabled: boolean,
+) {
+  const values = new Set(
+    (style.textDecoration ?? '').split(/\s+/).filter(Boolean),
+  );
   if (enabled) values.add(decoration);
   else values.delete(decoration);
   style.textDecoration = values.size ? [...values].join(' ') : undefined;
 }
 
-function applySprmOperand(style: DocTextStyle, sprm: number, operand: Uint8Array, fonts: DocFontTable = []) {
-  const operandView = new DataView(operand.buffer, operand.byteOffset, operand.byteLength);
+function applySprmOperand(
+  style: DocTextStyle,
+  sprm: number,
+  operand: Uint8Array,
+  fonts: DocFontTable = [],
+) {
+  const operandView = new DataView(
+    operand.buffer,
+    operand.byteOffset,
+    operand.byteLength,
+  );
   const first = operand[0];
 
   if ((sprm === 0x0835 || sprm === 0x0800) && first !== undefined) {
@@ -616,12 +700,18 @@ function applySprmOperand(style: DocTextStyle, sprm: number, operand: Uint8Array
   if ((sprm === 0x4a43 || sprm === 0x4a4d) && operand.length >= 2) {
     const halfPoints = readInt16(operandView, 0);
     if (halfPoints > 0 && halfPoints < 200) {
-      style.fontSize = halfPoints / 2 * (96 / 72);
+      style.fontSize = (halfPoints / 2) * (96 / 72);
     }
     return;
   }
 
-  if ((sprm === 0x4a4f || sprm === 0x4a50 || sprm === 0x4a51 || sprm === 0x4a4e) && operand.length >= 2) {
+  if (
+    (sprm === 0x4a4f ||
+      sprm === 0x4a50 ||
+      sprm === 0x4a51 ||
+      sprm === 0x4a4e) &&
+    operand.length >= 2
+  ) {
     const font = quoteFontFamily(fonts[readUint16(operandView, 0)]);
     if (font) style.fontFamily = font;
     return;
@@ -653,13 +743,13 @@ function applySprmOperand(style: DocTextStyle, sprm: number, operand: Uint8Array
     return;
   }
 
-  if ((sprm === 0xA413 || sprm === 0xA416) && operand.length >= 2) {
+  if ((sprm === 0xa413 || sprm === 0xa416) && operand.length >= 2) {
     const value = readInt16(operandView, 0);
     if (value >= 0) style.spacingBefore = twipToPx(value);
     return;
   }
 
-  if ((sprm === 0xA414 || sprm === 0xA417) && operand.length >= 2) {
+  if ((sprm === 0xa414 || sprm === 0xa417) && operand.length >= 2) {
     const value = readInt16(operandView, 0);
     if (value >= 0) style.spacingAfter = twipToPx(value);
     return;
@@ -670,34 +760,6 @@ function applySprmOperand(style: DocTextStyle, sprm: number, operand: Uint8Array
     if (line > 0) {
       style.lineHeight = line >= 240 ? line / 240 : twipToPx(line);
     }
-  }
-}
-
-function applyTableSprmOperand(style: DocTableStyle, sprm: number, operand: Uint8Array) {
-  const operandView = new DataView(operand.buffer, operand.byteOffset, operand.byteLength);
-  const first = operand[0];
-
-  if ((sprm === 0x5400 || sprm === 0x548a) && operand.length >= 2) {
-    const justify = readInt16(operandView, 0);
-    style.borderColor = style.borderColor ?? '#cbd5e1';
-    if (justify === 1) style.headerBackgroundColor = style.headerBackgroundColor ?? '#eef4ff';
-    return;
-  }
-
-  if (sprm === 0xD613 && operand.length >= 8) {
-    const color = WORD_ICO_COLORS[first ?? 0];
-    if (color) style.borderColor = color;
-    return;
-  }
-
-  if (sprm === 0xD660 && operand.length >= 4) {
-    const color = WORD_ICO_COLORS[first ?? 0];
-    if (color) style.cellBackgroundColor = color;
-    return;
-  }
-
-  if (sprm === 0xD609 && operand.length >= 4) {
-    style.stripedRowBackgroundColor = '#f8fafc';
   }
 }
 
@@ -717,7 +779,10 @@ function sprmOperandSize(sprm: number, bytes: Uint8Array, offset: number) {
   return 0;
 }
 
-function parseGrpprlStyle(bytes: Uint8Array, fonts: DocFontTable = []): DocTextStyle | undefined {
+function parseGrpprlStyle(
+  bytes: Uint8Array,
+  fonts: DocFontTable = [],
+): DocTextStyle | undefined {
   const style: DocTextStyle = {};
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 0;
@@ -727,31 +792,23 @@ function parseGrpprlStyle(bytes: Uint8Array, fonts: DocFontTable = []): DocTextS
     offset += 2;
     const operandSize = sprmOperandSize(sprm, bytes, offset);
     if (!operandSize || offset + operandSize > bytes.length) break;
-    applySprmOperand(style, sprm, bytes.slice(offset, offset + operandSize), fonts);
+    applySprmOperand(
+      style,
+      sprm,
+      bytes.slice(offset, offset + operandSize),
+      fonts,
+    );
     offset += operandSize;
   }
 
   return Object.keys(style).length ? style : undefined;
 }
 
-function parseGrpprlTableStyle(bytes: Uint8Array): DocTableStyle | undefined {
-  const style: DocTableStyle = {};
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 0;
-
-  while (offset + 2 <= bytes.length) {
-    const sprm = readUint16(view, offset);
-    offset += 2;
-    const operandSize = sprmOperandSize(sprm, bytes, offset);
-    if (!operandSize || offset + operandSize > bytes.length) break;
-    applyTableSprmOperand(style, sprm, bytes.slice(offset, offset + operandSize));
-    offset += operandSize;
-  }
-
-  return Object.keys(style).length ? style : undefined;
-}
-
-function parseChpxFkpPage(wordDocument: Uint8Array, pageOffset: number, fonts: DocFontTable): DocCharacterRun[] {
+function parseChpxFkpPage(
+  wordDocument: Uint8Array,
+  pageOffset: number,
+  fonts: DocFontTable,
+): DocCharacterRun[] {
   const page = wordDocument.slice(pageOffset, pageOffset + 512);
   if (page.length < 512) return [];
 
@@ -788,7 +845,10 @@ function parseCharacterRuns(
   );
 }
 
-function parsePapxFkpPage(wordDocument: Uint8Array, pageOffset: number): DocParagraphRun[] {
+function parsePapxFkpPage(
+  wordDocument: Uint8Array,
+  pageOffset: number,
+): DocParagraphRun[] {
   const page = wordDocument.slice(pageOffset, pageOffset + 512);
   if (page.length < 512) return [];
 
@@ -816,7 +876,11 @@ function parsePapxFkpPage(wordDocument: Uint8Array, pageOffset: number): DocPara
   return runs;
 }
 
-function parseParagraphRuns(wordDocument: Uint8Array, tableStream: Uint8Array, fib: DocFib): DocParagraphRun[] {
+function parseParagraphRuns(
+  wordDocument: Uint8Array,
+  tableStream: Uint8Array,
+  fib: DocFib,
+): DocParagraphRun[] {
   return parsePlcBtePapx(tableStream, fib).flatMap((entry) =>
     parsePapxFkpPage(wordDocument, entry.pn * 512).filter(
       (run) => run.fcEnd > entry.fcStart && run.fcStart < entry.fcEnd,
@@ -824,51 +888,51 @@ function parseParagraphRuns(wordDocument: Uint8Array, tableStream: Uint8Array, f
   );
 }
 
-function parseTableRuns(wordDocument: Uint8Array, tableStream: Uint8Array, fib: DocFib): DocTableRun[] {
-  const tableFc = fib.fcPlcfBtePapx + fib.lcbPlcfBtePapx;
-  if (!tableFc) return [];
-
-  const data = tableStream.slice(tableFc, tableStream.length);
-  if (data.length < 8) return [];
-
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const count = Math.floor((data.length - 4) / 4);
-
-  return Array.from({ length: count }, (_, index) => {
-    const fcStart = readUint32(view, index * 4);
-    const fcEnd = readUint32(view, (index + 1) * 4);
-    const pn = readUint32(view, (count + 1) * 4 + index * 4) & 0x003fffff;
-    const page = wordDocument.slice(pn * 512, pn * 512 + 512);
-    if (page.length < 512) return undefined;
-    const style = parseGrpprlTableStyle(page.slice(0, page[0] ?? 0));
-    if (!style) return undefined;
-    return { fcStart, fcEnd, style };
-  }).filter((item): item is DocTableRun => Boolean(item));
-}
-
 function fileOffsetForPieceChar(piece: DocPiece, charOffset: number) {
-  return piece.compressed ? (piece.fileOffset + charOffset) * 2 : piece.fileOffset + charOffset * 2;
+  return piece.compressed
+    ? (piece.fileOffset + charOffset) * 2
+    : piece.fileOffset + charOffset * 2;
 }
 
 function pieceCharOffsetForFileOffset(piece: DocPiece, fileOffset: number) {
-  return piece.compressed ? fileOffset / 2 - piece.fileOffset : (fileOffset - piece.fileOffset) / 2;
+  return piece.compressed
+    ? fileOffset / 2 - piece.fileOffset
+    : (fileOffset - piece.fileOffset) / 2;
 }
 
-function styleForRange(byteStart: number, byteEnd: number, characterRuns: DocCharacterRun[]) {
+function styleForRange(
+  byteStart: number,
+  byteEnd: number,
+  characterRuns: DocCharacterRun[],
+) {
   return characterRuns
     .filter((run) => run.fcEnd > byteStart && run.fcStart < byteEnd)
     .sort((left, right) => left.fcStart - right.fcStart)
-    .reduce<DocTextStyle | undefined>((style, run) => mergeTextStyle(style, run.style), undefined);
+    .reduce<DocTextStyle | undefined>(
+      (style, run) => mergeTextStyle(style, run.style),
+      undefined,
+    );
 }
 
-function paragraphStyleForRange(byteStart: number, byteEnd: number, paragraphRuns: DocParagraphRun[]) {
+function paragraphStyleForRange(
+  byteStart: number,
+  byteEnd: number,
+  paragraphRuns: DocParagraphRun[],
+) {
   return paragraphRuns
     .filter((run) => run.fcEnd > byteStart && run.fcStart < byteEnd)
     .sort((left, right) => left.fcStart - right.fcStart)
-    .reduce<DocTextStyle | undefined>((style, run) => mergeTextStyle(style, run.style), undefined);
+    .reduce<DocTextStyle | undefined>(
+      (style, run) => mergeTextStyle(style, run.style),
+      undefined,
+    );
 }
 
-function splitPieceByStyleRuns(piece: DocPiece, characterRuns: DocCharacterRun[], paragraphRuns: DocParagraphRun[]) {
+function splitPieceByStyleRuns(
+  piece: DocPiece,
+  characterRuns: DocCharacterRun[],
+  paragraphRuns: DocParagraphRun[],
+) {
   const charLength = piece.charEnd - piece.charStart;
   const byteStart = piece.compressed ? piece.fileOffset * 2 : piece.fileOffset;
   const byteEnd = byteStart + charLength * 2;
@@ -876,8 +940,18 @@ function splitPieceByStyleRuns(piece: DocPiece, characterRuns: DocCharacterRun[]
 
   [...characterRuns, ...paragraphRuns].forEach((run) => {
     if (run.fcEnd <= byteStart || run.fcStart >= byteEnd) return;
-    const start = Math.max(0, Math.floor(pieceCharOffsetForFileOffset(piece, Math.max(run.fcStart, byteStart))));
-    const end = Math.min(charLength, Math.ceil(pieceCharOffsetForFileOffset(piece, Math.min(run.fcEnd, byteEnd))));
+    const start = Math.max(
+      0,
+      Math.floor(
+        pieceCharOffsetForFileOffset(piece, Math.max(run.fcStart, byteStart)),
+      ),
+    );
+    const end = Math.min(
+      charLength,
+      Math.ceil(
+        pieceCharOffsetForFileOffset(piece, Math.min(run.fcEnd, byteEnd)),
+      ),
+    );
     boundaries.add(start);
     boundaries.add(end);
   });
@@ -896,29 +970,36 @@ function textSegmentsFromPieces(
   paragraphRuns: DocParagraphRun[],
 ) {
   return pieces.flatMap((piece) => {
-    return splitPieceByStyleRuns(piece, characterRuns, paragraphRuns).map((range) => {
-      const scopedPiece: DocPiece = {
-        ...piece,
-        charStart: piece.charStart + range.start,
-        charEnd: piece.charStart + range.end,
-        fileOffset: piece.compressed ? piece.fileOffset + range.start : piece.fileOffset + range.start * 2,
-      };
-      const byteStart = fileOffsetForPieceChar(piece, range.start);
-      const byteEnd = fileOffsetForPieceChar(piece, range.end);
-      return readPieceSegment(
-        wordDocument,
-        scopedPiece,
-        mergeTextStyle(
-          paragraphStyleForRange(byteStart, byteEnd, paragraphRuns),
-          styleForRange(byteStart, byteEnd, characterRuns),
-        ),
-      );
-    });
+    return splitPieceByStyleRuns(piece, characterRuns, paragraphRuns).map(
+      (range) => {
+        const scopedPiece: DocPiece = {
+          ...piece,
+          charStart: piece.charStart + range.start,
+          charEnd: piece.charStart + range.end,
+          fileOffset: piece.compressed
+            ? piece.fileOffset + range.start
+            : piece.fileOffset + range.start * 2,
+        };
+        const byteStart = fileOffsetForPieceChar(piece, range.start);
+        const byteEnd = fileOffsetForPieceChar(piece, range.end);
+        return readPieceSegment(
+          wordDocument,
+          scopedPiece,
+          mergeTextStyle(
+            paragraphStyleForRange(byteStart, byteEnd, paragraphRuns),
+            styleForRange(byteStart, byteEnd, characterRuns),
+          ),
+        );
+      },
+    );
   });
 }
 
 function decodeCodePage1252(bytes: Uint8Array) {
-  const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('windows-1252') : undefined;
+  const decoder =
+    typeof TextDecoder !== 'undefined'
+      ? new TextDecoder('windows-1252')
+      : undefined;
   if (decoder) return decoder.decode(bytes);
   return Array.from(bytes, (value) => String.fromCharCode(value)).join('');
 }
@@ -927,7 +1008,9 @@ function bytesToDataUrl(bytes: Uint8Array, mimeType: string) {
   let binary = '';
   const chunkSize = 0x8000;
   for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    binary += String.fromCharCode(
+      ...bytes.subarray(offset, offset + chunkSize),
+    );
   }
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
@@ -984,15 +1067,24 @@ function decodeCompressedPiece(bytes: Uint8Array) {
 function readPieceText(wordDocument: Uint8Array, piece: DocPiece) {
   const charLength = piece.charEnd - piece.charStart;
   if (piece.compressed) {
-    return decodeCompressedPiece(wordDocument.slice(piece.fileOffset, piece.fileOffset + charLength));
+    return decodeCompressedPiece(
+      wordDocument.slice(piece.fileOffset, piece.fileOffset + charLength),
+    );
   }
 
   const byteLength = charLength * 2;
-  const bytes = wordDocument.slice(piece.fileOffset, piece.fileOffset + byteLength);
+  const bytes = wordDocument.slice(
+    piece.fileOffset,
+    piece.fileOffset + byteLength,
+  );
   return new TextDecoder('utf-16le').decode(bytes);
 }
 
-function readPieceSegment(wordDocument: Uint8Array, piece: DocPiece, style?: DocTextStyle): DocTextSegment {
+function readPieceSegment(
+  wordDocument: Uint8Array,
+  piece: DocPiece,
+  style?: DocTextStyle,
+): DocTextSegment {
   return {
     text: readPieceText(wordDocument, piece),
     style,
@@ -1006,24 +1098,31 @@ function normalizeDocText(text: string) {
     .replace(/\u000b/g, '\n')
     .replace(/\u000c/g, '\n')
     .replace(/\u000d/g, '\n')
-    .replace(/\u0013([^\u0014\u0015]*)(?:\u0014([^\u0015]*))?/g, (_match, instruction = '', result = '') =>
-      `${instruction}${result}`.includes('\u0001') ? '\u0001' : '',
+    .replace(
+      /\u0013([^\u0014\u0015]*)(?:\u0014([^\u0015]*))?/g,
+      (_match, instruction = '', result = '') =>
+        `${instruction}${result}`.includes('\u0001') ? '\u0001' : '',
     )
     .replace(/\u0015/g, '')
     .replace(/[\u0002-\u0006\u0008\u000e-\u001f]/g, '');
 }
 
-function normalizeDocTextSegments(segments: DocTextSegment[], images: DocImage[] = []) {
+function normalizeDocTextSegments(
+  segments: DocTextSegment[],
+  images: DocImage[] = [],
+) {
   let imageIndex = 0;
 
   return segments.flatMap((segment) => {
-    const anchorCount = Array.from(segment.text).filter((char) => char === '\u0001').length;
+    const anchorCount = Array.from(segment.text).filter(
+      (char) => char === '\u0001',
+    ).length;
     const normalizedText =
       anchorCount > 0 && normalizeDocText(segment.text).includes('\u0001')
         ? normalizeDocText(segment.text)
         : anchorCount > 0
-          ? `${normalizeDocText(segment.text)}${'\u0001'.repeat(anchorCount)}`
-          : normalizeDocText(segment.text);
+        ? `${normalizeDocText(segment.text)}${'\u0001'.repeat(anchorCount)}`
+        : normalizeDocText(segment.text);
 
     return normalizedText
       .split(/(\n|\u0001)/)
@@ -1035,7 +1134,9 @@ function normalizeDocTextSegments(segments: DocTextSegment[], images: DocImage[]
         }
         return { text, style: segment.style };
       })
-      .filter((item) => item.image || (item.text.length && item.text !== '\u0001'));
+      .filter(
+        (item) => item.image || (item.text.length && item.text !== '\u0001'),
+      );
   });
 }
 
@@ -1044,7 +1145,9 @@ function normalizeBlockText(text: string) {
 }
 
 function textFromInlines(inlines: DocTextInline[]) {
-  return inlines.map((inline) => (inline.type === 'text' ? inline.text : '')).join('');
+  return inlines
+    .map((inline) => (inline.type === 'text' ? inline.text : ''))
+    .join('');
 }
 
 function sameInlineStyle(left?: DocTextStyle, right?: DocTextStyle) {
@@ -1061,7 +1164,10 @@ function mergeAdjacentInlines(inlines: DocTextInline[]) {
     }
     if (!inline.text) return;
     const previous = merged[merged.length - 1];
-    if (previous?.type === 'text' && sameInlineStyle(previous.style, inline.style)) {
+    if (
+      previous?.type === 'text' &&
+      sameInlineStyle(previous.style, inline.style)
+    ) {
       previous.text += inline.text;
       return;
     }
@@ -1074,7 +1180,11 @@ function mergeAdjacentInlines(inlines: DocTextInline[]) {
 function trimInlines(inlines: DocTextInline[]) {
   const result = inlines
     .map((inline) => ({ ...inline }))
-    .filter((inline) => inline.type === 'image' || (inline.type === 'text' && inline.text.length));
+    .filter(
+      (inline) =>
+        inline.type === 'image' ||
+        (inline.type === 'text' && inline.text.length),
+    );
 
   while (result.length && result[0].type === 'text' && !result[0].text.trim()) {
     result.shift();
@@ -1087,7 +1197,8 @@ function trimInlines(inlines: DocTextInline[]) {
   }
 
   if (result.length) {
-    if (result[0].type === 'text') result[0].text = result[0].text.replace(/^\s+/, '');
+    if (result[0].type === 'text')
+      result[0].text = result[0].text.replace(/^\s+/, '');
     const last = result[result.length - 1];
     if (last.type === 'text') last.text = last.text.replace(/\s+$/, '');
   }
@@ -1096,13 +1207,22 @@ function trimInlines(inlines: DocTextInline[]) {
 }
 
 function looksLikeTableRow(line: string) {
-  return line.split('|').map((cell) => cell.trim()).filter(Boolean).length >= 2;
+  return (
+    line
+      .split('|')
+      .map((cell) => cell.trim())
+      .filter(Boolean).length >= 2
+  );
 }
 
 function splitTableCells(line: DocLine): PendingTableCell[] {
   const cells: PendingTableCell[] = [];
   let current: DocTextInline[] = [];
-  const textInlines = (inlines: DocTextInline[]) => inlines.filter((item): item is Extract<DocTextInline, { type: 'text' }> => item.type === 'text');
+  const textInlines = (inlines: DocTextInline[]) =>
+    inlines.filter(
+      (item): item is Extract<DocTextInline, { type: 'text' }> =>
+        item.type === 'text',
+    );
 
   line.inlines.forEach((inline) => {
     if (inline.type === 'image') {
@@ -1118,7 +1238,12 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
           cells.push({
             text: normalizeBlockText(textFromInlines(inlines)),
             inlines,
-            style: dominantStyle(textInlines(inlines).map((item) => ({ text: item.text, style: item.style }))),
+            style: dominantStyle(
+              textInlines(inlines).map((item) => ({
+                text: item.text,
+                style: item.style,
+              })),
+            ),
           });
         }
         current = [];
@@ -1135,7 +1260,12 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
     cells.push({
       text: normalizeBlockText(textFromInlines(inlines)),
       inlines,
-      style: dominantStyle(textInlines(inlines).map((item) => ({ text: item.text, style: item.style }))),
+      style: dominantStyle(
+        textInlines(inlines).map((item) => ({
+          text: item.text,
+          style: item.style,
+        })),
+      ),
     });
   }
 
@@ -1176,7 +1306,9 @@ function parseListLine(line: DocLine): ParsedListLine | undefined {
     };
   }
 
-  const unorderedMatch = line.match(/^\s*(?:[\u2022\u25cf\u25cb\u25a0\u25c6]|[-*])\s+(.+)$/);
+  const unorderedMatch = line.match(
+    /^\s*(?:[\u2022\u25cf\u25cb\u25a0\u25c6]|[-*])\s+(.+)$/,
+  );
   if (unorderedMatch?.[1]) {
     return {
       ordered: false,
@@ -1187,7 +1319,10 @@ function parseListLine(line: DocLine): ParsedListLine | undefined {
   return undefined;
 }
 
-function inferParagraphStyle(role: DocParagraphBlock['role'], text: string): DocTextStyle {
+function inferParagraphStyle(
+  role: DocParagraphBlock['role'],
+  text: string,
+): DocTextStyle {
   if (role === 'title') {
     return {
       fontSize: 22,
@@ -1210,7 +1345,9 @@ function inferParagraphStyle(role: DocParagraphBlock['role'], text: string): Doc
       fontFamily: DOC_FONT_FAMILY,
       paddingTop: 2,
       paddingBottom: 2,
-      backgroundColor: text.includes('\u5185\u5bb9\u5757') ? '#f8fafc' : undefined,
+      backgroundColor: text.includes('\u5185\u5bb9\u5757')
+        ? '#f8fafc'
+        : undefined,
     };
   }
 
@@ -1253,24 +1390,41 @@ function estimateTableColumns(rows: PendingTableCell[][]) {
       8,
       ...rows.map((row) => {
         const text = row[columnIndex]?.text ?? '';
-        return Array.from(text).reduce((sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 2 : 1), 0);
+        return Array.from(text).reduce(
+          (sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 2 : 1),
+          0,
+        );
       }),
     ),
   );
   const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-  const availableWidth = DEFAULT_DOC_PAGE.width - DEFAULT_DOC_PAGE.marginLeft - DEFAULT_DOC_PAGE.marginRight;
-  return weights.map((weight) => Math.max(64, (weight / total) * availableWidth));
+  const availableWidth =
+    DEFAULT_DOC_PAGE.width -
+    DEFAULT_DOC_PAGE.marginLeft -
+    DEFAULT_DOC_PAGE.marginRight;
+  return weights.map((weight) =>
+    Math.max(64, (weight / total) * availableWidth),
+  );
 }
 
-function createParagraphBlock(text: string, index: number, inlines?: DocTextInline[], style?: DocTextStyle): DocParagraphBlock {
+function createParagraphBlock(
+  text: string,
+  index: number,
+  inlines?: DocTextInline[],
+  style?: DocTextStyle,
+): DocParagraphBlock {
   const compactLength = text.replace(/\s+/g, '').length;
   const hasImages = Boolean(inlines?.some((inline) => inline.type === 'image'));
   const role =
     index === 0 && compactLength <= 24
       ? 'title'
-      : compactLength > 0 && compactLength <= 18 && !hasImages && !/[|:\uff1a]/.test(text) && !/[0-9]{4,}/.test(text)
-        ? 'heading'
-        : 'body';
+      : compactLength > 0 &&
+        compactLength <= 18 &&
+        !hasImages &&
+        !/[|:\uff1a]/.test(text) &&
+        !/[0-9]{4,}/.test(text)
+      ? 'heading'
+      : 'body';
 
   return {
     id: `doc-p-${index + 1}`,
@@ -1282,7 +1436,10 @@ function createParagraphBlock(text: string, index: number, inlines?: DocTextInli
   };
 }
 
-function createTableBlock(rows: PendingTableCell[][], index: number): DocTableBlock {
+function createTableBlock(
+  rows: PendingTableCell[][],
+  index: number,
+): DocTableBlock {
   const tableStyle = inferTableStyle();
   return {
     id: `doc-table-${index + 1}`,
@@ -1301,8 +1458,8 @@ function createTableBlock(rows: PendingTableCell[][], index: number): DocTableBl
             rowIndex === 0
               ? tableStyle.headerBackgroundColor
               : rowIndex % 2 === 1
-                ? tableStyle.cellBackgroundColor
-                : tableStyle.stripedRowBackgroundColor,
+              ? tableStyle.cellBackgroundColor
+              : tableStyle.stripedRowBackgroundColor,
           fontSize: rowIndex === 0 ? 13 : 13,
           fontWeight: rowIndex === 0 ? 700 : 400,
           lineHeight: 1.65,
@@ -1336,19 +1493,31 @@ function createListBlock(items: ParsedListLine[], index: number): DocListBlock {
 }
 
 function dominantStyle(segments: DocTextSegment[]) {
-  return segments.reduce<DocTextStyle | undefined>((style, segment) => mergeTextStyle(style, segment.style), undefined);
+  return segments.reduce<DocTextStyle | undefined>(
+    (style, segment) => mergeTextStyle(style, segment.style),
+    undefined,
+  );
 }
 
 function blockHasImage(block: DocBlock) {
-  if (block.type === 'paragraph') return Boolean(block.inlines?.some((inline) => inline.type === 'image'));
+  if (block.type === 'paragraph')
+    return Boolean(block.inlines?.some((inline) => inline.type === 'image'));
   if (block.type === 'table') {
-    return block.rows.some((row) => row.cells.some((cell) => cell.inlines?.some((inline) => inline.type === 'image')));
+    return block.rows.some((row) =>
+      row.cells.some((cell) =>
+        cell.inlines?.some((inline) => inline.type === 'image'),
+      ),
+    );
   }
-  return block.items.some((item) => item.inlines?.some((inline) => inline.type === 'image'));
+  return block.items.some((item) =>
+    item.inlines?.some((inline) => inline.type === 'image'),
+  );
 }
 
 function isImageOnlyParagraph(block: DocBlock) {
-  return block.type === 'paragraph' && !block.text.trim() && blockHasImage(block);
+  return (
+    block.type === 'paragraph' && !block.text.trim() && blockHasImage(block)
+  );
 }
 
 function isShapeTextParagraph(block: DocBlock) {
@@ -1357,11 +1526,9 @@ function isShapeTextParagraph(block: DocBlock) {
   return (
     !blockHasImage(block) &&
     Boolean(text) &&
-    (
-      text.includes('\u6dfb\u52a0\u6807\u9898') ||
+    (text.includes('\u6dfb\u52a0\u6807\u9898') ||
       text.includes('\u8bf7\u70b9\u51fb\u7f16\u8f91\u6587\u5b57') ||
-      text.includes('\u8bf7\u6b64\u5904\u7f16\u8f91\u6587\u5b57')
-    )
+      text.includes('\u8bf7\u6b64\u5904\u7f16\u8f91\u6587\u5b57'))
   );
 }
 
@@ -1388,7 +1555,11 @@ function reorderFloatingShapeTextBlocks(blocks: DocBlock[]) {
     }
 
     if (imageEnd > index + 1 && textEnd > imageEnd) {
-      reordered.push(tableBlock, ...blocks.slice(imageEnd, textEnd), ...blocks.slice(index + 1, imageEnd));
+      reordered.push(
+        tableBlock,
+        ...blocks.slice(imageEnd, textEnd),
+        ...blocks.slice(index + 1, imageEnd),
+      );
       index = textEnd;
       continue;
     }
@@ -1397,10 +1568,22 @@ function reorderFloatingShapeTextBlocks(blocks: DocBlock[]) {
     index += 1;
   }
 
-  return reordered.map((block, blockIndex) => ({ ...block, id: `${block.type === 'table' ? 'doc-table' : block.type === 'list' ? 'doc-list' : 'doc-p'}-${blockIndex + 1}` }));
+  return reordered.map((block, blockIndex) => ({
+    ...block,
+    id: `${
+      block.type === 'table'
+        ? 'doc-table'
+        : block.type === 'list'
+        ? 'doc-list'
+        : 'doc-p'
+    }-${blockIndex + 1}`,
+  }));
 }
 
-function blocksFromSegments(segments: DocTextSegment[], images: DocImage[] = []): DocBlock[] {
+function blocksFromSegments(
+  segments: DocTextSegment[],
+  images: DocImage[] = [],
+): DocBlock[] {
   const blocks: DocBlock[] = [];
   const pendingTableRows: PendingTableCell[][] = [];
   const pendingListItems: ParsedListLine[] = [];
@@ -1449,7 +1632,11 @@ function blocksFromSegments(segments: DocTextSegment[], images: DocImage[] = [])
     }
 
     currentLine += segment.text;
-    currentLineInlines.push({ type: 'text', text: segment.text, style: segment.style });
+    currentLineInlines.push({
+      type: 'text',
+      text: segment.text,
+      style: segment.style,
+    });
     currentLineSegments.push(segment);
   });
 
@@ -1470,7 +1657,13 @@ function blocksFromSegments(segments: DocTextSegment[], images: DocImage[] = [])
   const flushList = () => {
     if (!pendingListItems.length) return;
     if (pendingListItems.length === 1) {
-      blocks.push(createParagraphBlock(pendingListItems[0].text, blocks.length, pendingListItems[0].inlines));
+      blocks.push(
+        createParagraphBlock(
+          pendingListItems[0].text,
+          blocks.length,
+          pendingListItems[0].inlines,
+        ),
+      );
     } else {
       blocks.push(createListBlock([...pendingListItems], blocks.length));
     }
@@ -1483,7 +1676,9 @@ function blocksFromSegments(segments: DocTextSegment[], images: DocImage[] = [])
       flushTable();
       flushList();
       if (line.inlines.some((inline) => inline.type === 'image')) {
-        blocks.push(createParagraphBlock('', blocks.length, line.inlines, line.style));
+        blocks.push(
+          createParagraphBlock('', blocks.length, line.inlines, line.style),
+        );
       }
       return;
     }
@@ -1506,7 +1701,9 @@ function blocksFromSegments(segments: DocTextSegment[], images: DocImage[] = [])
 
     flushTable();
     flushList();
-    blocks.push(createParagraphBlock(textLine, blocks.length, line.inlines, line.style));
+    blocks.push(
+      createParagraphBlock(textLine, blocks.length, line.inlines, line.style),
+    );
   });
 
   flushTable();
@@ -1523,7 +1720,9 @@ function paragraphsFromBlocks(blocks: DocBlock[]): DocParagraph[] {
     .flatMap((block) => {
       if (block.type === 'paragraph') return [block.text];
       if (block.type === 'list') return block.items.map((item) => item.text);
-      return block.rows.map((row) => row.cells.map((cell) => cell.text).join(' '));
+      return block.rows.map((row) =>
+        row.cells.map((cell) => cell.text).join(' '),
+      );
     })
     .filter(Boolean)
     .map((text, index) => ({
@@ -1545,9 +1744,18 @@ function extractImageAt(bytes: Uint8Array, start: number) {
   ) {
     let offset = start + 8;
     while (offset + 12 <= bytes.length) {
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
       const chunkLength = readUint32BE(view, offset);
-      const chunkType = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+      const chunkType = String.fromCharCode(
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7],
+      );
       const nextOffset = offset + 12 + chunkLength;
       if (nextOffset > bytes.length) break;
       offset = nextOffset;
@@ -1560,7 +1768,11 @@ function extractImageAt(bytes: Uint8Array, start: number) {
     }
   }
 
-  if (bytes[start] === 0xff && bytes[start + 1] === 0xd8 && bytes[start + 2] === 0xff) {
+  if (
+    bytes[start] === 0xff &&
+    bytes[start + 1] === 0xd8 &&
+    bytes[start + 2] === 0xff
+  ) {
     for (let index = start + 2; index + 1 < bytes.length; index += 1) {
       if (bytes[index] === 0xff && bytes[index + 1] === 0xd9) {
         return {
@@ -1606,28 +1818,56 @@ function readImageSize(bytes: Uint8Array, mimeType: string) {
   return {};
 }
 
-function textNearBytes(bytes: Uint8Array, start: number, before = 320, after = 80) {
-  const slice = bytes.slice(Math.max(0, start - before), Math.min(bytes.length, start + after));
-  return Array.from(slice, (value) => (value >= 32 && value <= 126 ? String.fromCharCode(value) : ' ')).join('');
+function textNearBytes(
+  bytes: Uint8Array,
+  start: number,
+  before = 320,
+  after = 80,
+) {
+  const slice = bytes.slice(
+    Math.max(0, start - before),
+    Math.min(bytes.length, start + after),
+  );
+  return Array.from(slice, (value) =>
+    value >= 32 && value <= 126 ? String.fromCharCode(value) : ' ',
+  ).join('');
 }
 
-function isLikelySameImageObject(left: DocImageCandidate, right: DocImageCandidate) {
+function isLikelySameImageObject(
+  left: DocImageCandidate,
+  right: DocImageCandidate,
+) {
   if (left.streamName !== right.streamName) return false;
-  if (left.mimeType !== right.mimeType || !left.width || !left.height || !right.width || !right.height) return false;
+  if (
+    left.mimeType !== right.mimeType ||
+    !left.width ||
+    !left.height ||
+    !right.width ||
+    !right.height
+  )
+    return false;
   if (left.width !== right.width || left.height !== right.height) return false;
 
   const byteDelta = Math.abs(left.byteLength - right.byteLength);
-  const isCloseLength = byteDelta <= 1024 || byteDelta / Math.max(left.byteLength, right.byteLength) <= 0.02;
+  const isCloseLength =
+    byteDelta <= 1024 ||
+    byteDelta / Math.max(left.byteLength, right.byteLength) <= 0.02;
   const isOfficePreviewPair =
-    (left.packagedMedia && right.webExtensionPreview) || (left.webExtensionPreview && right.packagedMedia);
+    (left.packagedMedia && right.webExtensionPreview) ||
+    (left.webExtensionPreview && right.packagedMedia);
   const isNearAlternatePreview = Math.abs(left.offset - right.offset) <= 120000;
 
   return isCloseLength && isOfficePreviewPair && isNearAlternatePreview;
 }
 
-function chooseBetterImageCandidate(left: DocImageCandidate, right: DocImageCandidate) {
-  if (left.packagedMedia !== right.packagedMedia) return left.packagedMedia ? left : right;
-  if (left.byteLength !== right.byteLength) return left.byteLength > right.byteLength ? left : right;
+function chooseBetterImageCandidate(
+  left: DocImageCandidate,
+  right: DocImageCandidate,
+) {
+  if (left.packagedMedia !== right.packagedMedia)
+    return left.packagedMedia ? left : right;
+  if (left.byteLength !== right.byteLength)
+    return left.byteLength > right.byteLength ? left : right;
   return left.offset <= right.offset ? left : right;
 }
 
@@ -1635,21 +1875,37 @@ function normalizeImageCandidates(candidates: DocImageCandidate[]) {
   const normalized: DocImageCandidate[] = [];
 
   candidates.forEach((candidate) => {
-    const duplicateIndex = normalized.findIndex((image) => isLikelySameImageObject(image, candidate));
+    const duplicateIndex = normalized.findIndex((image) =>
+      isLikelySameImageObject(image, candidate),
+    );
     if (duplicateIndex === -1) {
       normalized.push(candidate);
       return;
     }
 
-    normalized[duplicateIndex] = chooseBetterImageCandidate(normalized[duplicateIndex], candidate);
+    normalized[duplicateIndex] = chooseBetterImageCandidate(
+      normalized[duplicateIndex],
+      candidate,
+    );
   });
 
   return normalized
     .sort((left, right) => left.offset - right.offset)
-    .map(({ byteLength, packagedMedia, webExtensionPreview, streamName, ...image }, index) => ({
-      ...image,
-      id: `doc-image-${index + 1}`,
-    }));
+    .map(
+      (
+        {
+          byteLength,
+          packagedMedia,
+          webExtensionPreview,
+          streamName,
+          ...image
+        },
+        index,
+      ) => ({
+        ...image,
+        id: `doc-image-${index + 1}`,
+      }),
+    );
 }
 
 function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
@@ -1662,7 +1918,9 @@ function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
 
   for (let index = 0; index < bytes.length - 4; index += 1) {
     const signature = signatures.find(({ header }) =>
-      header.every((value, headerIndex) => bytes[index + headerIndex] === value),
+      header.every(
+        (value, headerIndex) => bytes[index + headerIndex] === value,
+      ),
     );
     if (!signature) continue;
 
@@ -1670,7 +1928,9 @@ function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
     if (!extracted || extracted.bytes.length < 128) continue;
 
     const head = Array.from(extracted.bytes.slice(0, 16)).join(',');
-    const tail = Array.from(extracted.bytes.slice(Math.max(0, extracted.bytes.length - 16))).join(',');
+    const tail = Array.from(
+      extracted.bytes.slice(Math.max(0, extracted.bytes.length - 16)),
+    ).join(',');
     const key = `${extracted.mimeType}:${extracted.bytes.length}:${head}:${tail}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1683,7 +1943,9 @@ function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
       offset: index,
       byteLength: extracted.bytes.length,
       packagedMedia: /drs\/media|drs\\media/.test(context),
-      webExtensionPreview: /drs\/webExtensions|drs\\webExtensions/.test(context),
+      webExtensionPreview: /drs\/webExtensions|drs\\webExtensions/.test(
+        context,
+      ),
       streamName,
       ...readImageSize(extracted.bytes, extracted.mimeType),
     });
@@ -1693,14 +1955,18 @@ function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
 }
 
 function extractDocImages(cfb: CfbFile) {
-  const candidates = Array.from(cfb.streams.entries()).flatMap(([streamName, stream]) =>
-    extractDocImagesFromStream(stream, streamName),
+  const candidates = Array.from(cfb.streams.entries()).flatMap(
+    ([streamName, stream]) => extractDocImagesFromStream(stream, streamName),
   );
 
   return normalizeImageCandidates(candidates);
 }
 
-function parsePlainLikeDoc(bytes: Uint8Array, fileName: string, warnings: string[]): DocDocument {
+function parsePlainLikeDoc(
+  bytes: Uint8Array,
+  fileName: string,
+  warnings: string[],
+): DocDocument {
   const fullText = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   const isRtf = fullText.trimStart().startsWith('{\\rtf');
   const text = isRtf
@@ -1718,9 +1984,15 @@ function parsePlainLikeDoc(bytes: Uint8Array, fileName: string, warnings: string
   return buildDocDocument(fileName, blocksFromText(text), warnings);
 }
 
-function buildDocDocument(fileName: string, blocks: DocBlock[], warnings: string[]): DocDocument {
+function buildDocDocument(
+  fileName: string,
+  blocks: DocBlock[],
+  warnings: string[],
+): DocDocument {
   const paragraphs = paragraphsFromBlocks(blocks);
-  const title = paragraphs.find((paragraph) => paragraph.text)?.text ?? (fileName || 'DOC \u6587\u6863');
+  const title =
+    paragraphs.find((paragraph) => paragraph.text)?.text ??
+    (fileName || 'DOC \u6587\u6863');
   const images = [] as DocImage[];
 
   return {
@@ -1746,30 +2018,48 @@ export async function parseDoc(file: File): Promise<DocDocument> {
   const wordDocument = cfb.streams.get('WordDocument');
 
   if (!wordDocument) {
-    throw new Error('DOC \u6587\u4ef6\u7f3a\u5c11 WordDocument \u6570\u636e\u6d41');
+    throw new Error(
+      'DOC \u6587\u4ef6\u7f3a\u5c11 WordDocument \u6570\u636e\u6d41',
+    );
   }
 
   const fib = parseFib(wordDocument);
   const tableStream = cfb.streams.get(fib.tableStreamName);
 
   if (!tableStream) {
-    throw new Error(`DOC \u6587\u4ef6\u7f3a\u5c11 ${fib.tableStreamName} \u6570\u636e\u6d41`);
+    throw new Error(
+      `DOC \u6587\u4ef6\u7f3a\u5c11 ${fib.tableStreamName} \u6570\u636e\u6d41`,
+    );
   }
 
   const pieces = parsePieces(tableStream, fib);
   if (!pieces.length) {
-    throw new Error('\u6682\u672a\u80fd\u8bc6\u522b\u8be5 DOC \u6587\u4ef6\u7684\u6b63\u6587\u7247\u6bb5\u8868');
+    throw new Error(
+      '\u6682\u672a\u80fd\u8bc6\u522b\u8be5 DOC \u6587\u4ef6\u7684\u6b63\u6587\u7247\u6bb5\u8868',
+    );
   }
 
   const fonts = parseFontTable(tableStream, fib);
-  const characterRuns = parseCharacterRuns(wordDocument, tableStream, fib, fonts);
+  const characterRuns = parseCharacterRuns(
+    wordDocument,
+    tableStream,
+    fib,
+    fonts,
+  );
   const paragraphRuns = parseParagraphRuns(wordDocument, tableStream, fib);
   const images = extractDocImages(cfb);
-  const segments = textSegmentsFromPieces(wordDocument, pieces, characterRuns, paragraphRuns);
+  const segments = textSegmentsFromPieces(
+    wordDocument,
+    pieces,
+    characterRuns,
+    paragraphRuns,
+  );
   const blocks = blocksFromSegments(segments, images);
 
   if (!blocks.length) {
-    throw new Error('\u8be5 DOC \u6587\u4ef6\u672a\u89e3\u6790\u5230\u53ef\u9884\u89c8\u6b63\u6587');
+    throw new Error(
+      '\u8be5 DOC \u6587\u4ef6\u672a\u89e3\u6790\u5230\u53ef\u9884\u89c8\u6b63\u6587',
+    );
   }
 
   warnings.push(
@@ -1781,4 +2071,3 @@ export async function parseDoc(file: File): Promise<DocDocument> {
   document.images = images;
   return document;
 }
-

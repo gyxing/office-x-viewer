@@ -1,3 +1,9 @@
+import type { EChartsOption } from 'echarts';
+import {
+  DEFAULT_OFFICE_THEME,
+  resolveOfficeThemeColor,
+  type OfficeTheme,
+} from './theme';
 import {
   attr,
   childByLocalName,
@@ -7,8 +13,6 @@ import {
   parseXml,
   textContent,
 } from './xml';
-import type { EChartsOption } from 'echarts';
-import { DEFAULT_OFFICE_THEME, resolveOfficeThemeColor, type OfficeTheme } from './theme';
 
 export type OfficeChartType =
   | 'line'
@@ -105,8 +109,17 @@ export type OfficeChartModel = {
   snapshotSrc?: string;
 };
 
-const DEFAULT_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452'];
-const OFFICE_FONT_FAMILY = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
+const DEFAULT_COLORS = [
+  '#5470c6',
+  '#91cc75',
+  '#fac858',
+  '#ee6666',
+  '#73c0de',
+  '#3ba272',
+  '#fc8452',
+];
+const OFFICE_FONT_FAMILY =
+  '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
 const OFFICE_TEXT_STYLE = {
   color: '#334155',
   fontFamily: OFFICE_FONT_FAMILY,
@@ -147,7 +160,9 @@ export function decodeMojibake(value: string) {
   }
 
   try {
-    const bytes = new Uint8Array(Array.from(value, (char) => char.charCodeAt(0) & 0xff));
+    const bytes = new Uint8Array(
+      Array.from(value, (char) => char.charCodeAt(0) & 0xff),
+    );
     const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
     return decoded.includes('\uFFFD') ? value : decoded;
   } catch {
@@ -156,7 +171,9 @@ export function decodeMojibake(value: string) {
 }
 
 function firstText(node: Element | null | undefined) {
-  const value = textContent(descendantByLocalName(node, 't')) || textContent(descendantByLocalName(node, 'v'));
+  const value =
+    textContent(descendantByLocalName(node, 't')) ||
+    textContent(descendantByLocalName(node, 'v'));
   return decodeMojibake(value.trim());
 }
 
@@ -165,18 +182,26 @@ function readCacheValues(node: Element | null | undefined, date1904 = false) {
   if (strCache) {
     return descendantsByLocalName(strCache, 'pt')
       .sort((a, b) => Number(attr(a, 'idx') ?? 0) - Number(attr(b, 'idx') ?? 0))
-      .map((point) => decodeMojibake(textContent(childByLocalName(point, 'v')).trim()));
+      .map((point) =>
+        decodeMojibake(textContent(childByLocalName(point, 'v')).trim()),
+      );
   }
 
   const numCache = descendantByLocalName(node, 'numCache');
   if (!numCache) return [];
 
-  const cacheFormatCode = decodeMojibake(textContent(childByLocalName(numCache, 'formatCode')).trim());
+  const cacheFormatCode = decodeMojibake(
+    textContent(childByLocalName(numCache, 'formatCode')).trim(),
+  );
   return descendantsByLocalName(numCache, 'pt')
     .sort((a, b) => Number(attr(a, 'idx') ?? 0) - Number(attr(b, 'idx') ?? 0))
     .map((point) => {
-      const value = decodeMojibake(textContent(childByLocalName(point, 'v')).trim());
-      const formatCode = decodeMojibake(attr(point, 'formatCode') ?? cacheFormatCode);
+      const value = decodeMojibake(
+        textContent(childByLocalName(point, 'v')).trim(),
+      );
+      const formatCode = decodeMojibake(
+        attr(point, 'formatCode') ?? cacheFormatCode,
+      );
       return formatCacheValue(value, formatCode, date1904);
     });
 }
@@ -189,7 +214,9 @@ function readNumericValues(node: Element | null | undefined) {
 
 function normalizeType(chartNode: Element | null): OfficeChartType {
   if (!chartNode) return 'unknown';
-  const localName = (chartNode.localName.split(':').pop() ?? chartNode.localName).toLowerCase();
+  const localName = (
+    chartNode.localName.split(':').pop() ?? chartNode.localName
+  ).toLowerCase();
   if (localName === 'barchart') {
     const barDir = attr(childByLocalName(chartNode, 'barDir'), 'val');
     return barDir === 'bar' ? 'bar' : 'column';
@@ -199,19 +226,30 @@ function normalizeType(chartNode: Element | null): OfficeChartType {
 
 function readSeriesColorWithTheme(seriesNode: Element, theme: OfficeTheme) {
   const spPr = childByLocalName(seriesNode, 'spPr');
-  const fillNode = childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill');
+  const fillNode =
+    childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill');
   const lineNode = childByLocalName(spPr, 'ln');
-  const color = readFillValue(fillNode, theme) ?? readFillColor(lineNode, theme);
+  const color =
+    readFillValue(fillNode, theme) ?? readFillColor(lineNode, theme);
   if (typeof color === 'string') return color;
 
-  const fallbackFill = childByLocalName(childByLocalName(seriesNode, 'spPr'), 'solidFill');
-  const fallbackLine = childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln');
-  const fallback = readFillValue(fallbackFill, DEFAULT_OFFICE_THEME) ?? readFillColor(fallbackLine, DEFAULT_OFFICE_THEME);
+  const fallbackFill = childByLocalName(
+    childByLocalName(seriesNode, 'spPr'),
+    'solidFill',
+  );
+  const fallbackLine = childByLocalName(
+    childByLocalName(seriesNode, 'spPr'),
+    'ln',
+  );
+  const fallback =
+    readFillValue(fallbackFill, DEFAULT_OFFICE_THEME) ??
+    readFillColor(fallbackLine, DEFAULT_OFFICE_THEME);
   return typeof fallback === 'string' ? fallback : undefined;
 }
 
 function readFillColor(node: Element | null | undefined, theme: OfficeTheme) {
-  const fillNode = childByLocalName(node, 'solidFill') ?? childByLocalName(node, 'gradFill');
+  const fillNode =
+    childByLocalName(node, 'solidFill') ?? childByLocalName(node, 'gradFill');
   const color = readFillValue(fillNode, theme);
   return typeof color === 'string' ? color : undefined;
 }
@@ -223,12 +261,17 @@ function readPointStyles(seriesNode: Element, theme: OfficeTheme) {
     if (!Number.isFinite(index)) return;
     const spPr = childByLocalName(pointNode, 'spPr');
     if (!spPr) return;
-    const fillNode = childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill');
+    const fillNode =
+      childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill');
     const lineNode = childByLocalName(spPr, 'ln');
     const color = readFillValue(fillNode, theme);
     const borderColor = readFillColor(lineNode, theme);
     const borderWidth = readLineWidth(lineNode);
-    const hasVisibleBorder = Boolean(lineNode && !childByLocalName(lineNode, 'noFill') && (borderColor || borderWidth !== undefined));
+    const hasVisibleBorder = Boolean(
+      lineNode &&
+        !childByLocalName(lineNode, 'noFill') &&
+        (borderColor || borderWidth !== undefined),
+    );
     if (color || hasVisibleBorder) {
       styles[index] = {
         color,
@@ -252,7 +295,11 @@ function readPointColors(seriesNode: Element, theme: OfficeTheme) {
 }
 
 function localName(node: Element | null | undefined) {
-  return (node?.localName.split(':').pop() ?? node?.localName ?? '').toLowerCase();
+  return (
+    node?.localName.split(':').pop() ??
+    node?.localName ??
+    ''
+  ).toLowerCase();
 }
 
 function clamp01(value: number) {
@@ -298,7 +345,8 @@ function rgbToHsl(r: number, g: number, b: number) {
     return { h: 0, s: 0, l: lightness };
   }
   const delta = max - min;
-  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  const saturation =
+    lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
   let hue = 0;
   switch (max) {
     case red:
@@ -315,7 +363,7 @@ function rgbToHsl(r: number, g: number, b: number) {
 }
 
 function hslToRgb(h: number, s: number, l: number) {
-  const hue = ((h % 360) + 360) % 360 / 360;
+  const hue = (((h % 360) + 360) % 360) / 360;
   if (s === 0) {
     const value = Math.round(l * 255);
     return { r: value, g: value, b: value };
@@ -347,14 +395,20 @@ function readColorNode(node: Element | null | undefined, theme: OfficeTheme) {
     kind === 'srgbclr'
       ? normalizeHex(attr(node, 'val'))
       : kind === 'schemeclr'
-        ? normalizeHex(resolveOfficeThemeColor(attr(node, 'val'), theme))
-        : kind === 'sysclr'
-          ? normalizeHex(attr(node, 'lastClr') ?? attr(node, 'val'))
-          : kind === 'prstclr'
-            ? normalizeHex(attr(node, 'val'))
-            : normalizeHex(
-                readColorNode(childByLocalName(node, 'srgbClr') ?? childByLocalName(node, 'schemeClr') ?? childByLocalName(node, 'sysClr') ?? childByLocalName(node, 'prstClr'), theme),
-              );
+      ? normalizeHex(resolveOfficeThemeColor(attr(node, 'val'), theme))
+      : kind === 'sysclr'
+      ? normalizeHex(attr(node, 'lastClr') ?? attr(node, 'val'))
+      : kind === 'prstclr'
+      ? normalizeHex(attr(node, 'val'))
+      : normalizeHex(
+          readColorNode(
+            childByLocalName(node, 'srgbClr') ??
+              childByLocalName(node, 'schemeClr') ??
+              childByLocalName(node, 'sysClr') ??
+              childByLocalName(node, 'prstClr'),
+            theme,
+          ),
+        );
   if (!base) return undefined;
 
   const transforms = Array.from(node.children)
@@ -363,7 +417,17 @@ function readColorNode(node: Element | null | undefined, theme: OfficeTheme) {
       val: Number(attr(child, 'val') ?? 0),
     }))
     .filter((item) =>
-      ['tint', 'shade', 'lummod', 'lumoff', 'huemod', 'hueoff', 'satmod', 'satoff', 'alpha'].includes(item.type),
+      [
+        'tint',
+        'shade',
+        'lummod',
+        'lumoff',
+        'huemod',
+        'hueoff',
+        'satmod',
+        'satoff',
+        'alpha',
+      ].includes(item.type),
     );
 
   let alpha = 1;
@@ -404,10 +468,15 @@ function readColorNode(node: Element | null | undefined, theme: OfficeTheme) {
   });
 
   const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
-  return alpha < 1 ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})` : rgbToHex(rgb.r, rgb.g, rgb.b);
+  return alpha < 1
+    ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
+    : rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-function readFillValue(node: Element | null | undefined, theme: OfficeTheme): OfficeChartColor | undefined {
+function readFillValue(
+  node: Element | null | undefined,
+  theme: OfficeTheme,
+): OfficeChartColor | undefined {
   if (!node) return undefined;
   const kind = localName(node);
   if (kind === 'gradfill') {
@@ -415,8 +484,13 @@ function readFillValue(node: Element | null | undefined, theme: OfficeTheme): Of
       .map((stop) => {
         const offset = clamp01(Number(attr(stop, 'pos') ?? 0) / 100000);
         const color =
-          readColorNode(childByLocalName(stop, 'srgbClr') ?? childByLocalName(stop, 'schemeClr') ?? childByLocalName(stop, 'sysClr') ?? childByLocalName(stop, 'prstClr'), theme) ??
-          undefined;
+          readColorNode(
+            childByLocalName(stop, 'srgbClr') ??
+              childByLocalName(stop, 'schemeClr') ??
+              childByLocalName(stop, 'sysClr') ??
+              childByLocalName(stop, 'prstClr'),
+            theme,
+          ) ?? undefined;
         return color ? { offset, color } : undefined;
       })
       .filter((stop): stop is OfficeChartColorStop => Boolean(stop))
@@ -424,7 +498,8 @@ function readFillValue(node: Element | null | undefined, theme: OfficeTheme): Of
 
     if (!stops.length) return undefined;
 
-    const angle = Number(attr(childByLocalName(node, 'lin'), 'ang') ?? 5400000) / 60000;
+    const angle =
+      Number(attr(childByLocalName(node, 'lin'), 'ang') ?? 5400000) / 60000;
     const radians = (angle * Math.PI) / 180;
     const x = 0.5 - Math.cos(radians) / 2;
     const y = 0.5 - Math.sin(radians) / 2;
@@ -481,7 +556,9 @@ function readShowDataLabels(chartNode: Element | null) {
   });
 }
 
-function readDataLabels(labelsNode: Element | null | undefined): OfficeDataLabels | undefined {
+function readDataLabels(
+  labelsNode: Element | null | undefined,
+): OfficeDataLabels | undefined {
   if (!labelsNode) return undefined;
   const dataLabels: OfficeDataLabels = {};
   const readBool = (name: string) => {
@@ -491,7 +568,9 @@ function readDataLabels(labelsNode: Element | null | undefined): OfficeDataLabel
   };
   const deleted = attr(childByLocalName(labelsNode, 'delete'), 'val');
   const position = attr(childByLocalName(labelsNode, 'dLblPos'), 'val');
-  const separator = textContent(childByLocalName(labelsNode, 'separator')).trim();
+  const separator = textContent(
+    childByLocalName(labelsNode, 'separator'),
+  ).trim();
 
   if (deleted === '1' || deleted === 'true') dataLabels.delete = true;
   if (position) dataLabels.position = position;
@@ -509,7 +588,8 @@ function readDataLabels(labelsNode: Element | null | undefined): OfficeDataLabel
   if (showSerName !== undefined) dataLabels.showSerName = showSerName;
   if (showPercent !== undefined) dataLabels.showPercent = showPercent;
   if (showBubbleSize !== undefined) dataLabels.showBubbleSize = showBubbleSize;
-  if (showLeaderLines !== undefined) dataLabels.showLeaderLines = showLeaderLines;
+  if (showLeaderLines !== undefined)
+    dataLabels.showLeaderLines = showLeaderLines;
   return Object.keys(dataLabels).length ? dataLabels : undefined;
 }
 
@@ -525,7 +605,9 @@ function readFontFamily(node: Element | null | undefined) {
   const latin = attr(childByLocalName(node, 'latin'), 'typeface');
   const eastAsia = attr(childByLocalName(node, 'ea'), 'typeface');
   const complex = attr(childByLocalName(node, 'cs'), 'typeface');
-  const value = [eastAsia, latin, complex].filter((item) => item && !item.startsWith('+')).join(', ');
+  const value = [eastAsia, latin, complex]
+    .filter((item) => item && !item.startsWith('+'))
+    .join(', ');
   return value || undefined;
 }
 
@@ -535,7 +617,10 @@ function readLegendVisible(chartNode: Element | null) {
   return deleted !== '1' && deleted !== 'true';
 }
 
-function readLegendStyle(chartNode: Element | null, theme: OfficeTheme): OfficeChartModel['legendStyle'] | undefined {
+function readLegendStyle(
+  chartNode: Element | null,
+  theme: OfficeTheme,
+): OfficeChartModel['legendStyle'] | undefined {
   const runProps = descendantByLocalName(chartNode, 'defRPr');
   const fontSize = Number(attr(runProps, 'sz'));
   const color = readFillColor(runProps, theme);
@@ -545,12 +630,17 @@ function readLegendStyle(chartNode: Element | null, theme: OfficeTheme): OfficeC
   const textStyle = {
     color,
     fontFamily,
-    fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize / 100 : undefined,
+    fontSize:
+      Number.isFinite(fontSize) && fontSize > 0 ? fontSize / 100 : undefined,
     fontWeight: bold === '1' || bold === 'true' ? 600 : undefined,
     fontStyle: italic === '1' || italic === 'true' ? 'italic' : undefined,
   };
-  const normalizedTextStyle = Object.fromEntries(Object.entries(textStyle).filter(([, value]) => value !== undefined));
-  return Object.keys(normalizedTextStyle).length ? { textStyle: normalizedTextStyle } : undefined;
+  const normalizedTextStyle = Object.fromEntries(
+    Object.entries(textStyle).filter(([, value]) => value !== undefined),
+  );
+  return Object.keys(normalizedTextStyle).length
+    ? { textStyle: normalizedTextStyle }
+    : undefined;
 }
 
 function readSeriesMarker(seriesNode: Element) {
@@ -567,7 +657,11 @@ function looksLikeDateFormat(formatCode: string) {
   return /[ymdhs]/i.test(formatCode) && !/^general$/i.test(formatCode);
 }
 
-function formatDateFromSerial(serial: number, formatCode: string, date1904: boolean) {
+function formatDateFromSerial(
+  serial: number,
+  formatCode: string,
+  date1904: boolean,
+) {
   const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
   const date = new Date(epoch + serial * 24 * 60 * 60 * 1000);
   const year = String(date.getUTCFullYear());
@@ -585,7 +679,11 @@ function formatDateFromSerial(serial: number, formatCode: string, date1904: bool
     .replace(/d/g, day);
 }
 
-function formatCacheValue(value: string, formatCode: string, date1904: boolean) {
+function formatCacheValue(
+  value: string,
+  formatCode: string,
+  date1904: boolean,
+) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
     return value;
@@ -605,27 +703,46 @@ function readDate1904(chartSpace: Element | null) {
 
 function findChartNodes(plotArea: Element | null) {
   return Array.from(plotArea?.children ?? []).filter((child) =>
-    (child.localName.split(':').pop() ?? child.localName).toLowerCase().endsWith('chart'),
+    (child.localName.split(':').pop() ?? child.localName)
+      .toLowerCase()
+      .endsWith('chart'),
   );
 }
 
-function readChartPlot(chartNode: Element, theme: OfficeTheme, date1904: boolean) {
+function readChartPlot(
+  chartNode: Element,
+  theme: OfficeTheme,
+  date1904: boolean,
+) {
   const type = normalizeType(chartNode);
   const chartKind = localName(chartNode);
   const seriesNodes = childrenByLocalName(chartNode, 'ser');
   const firstSeries = seriesNodes[0];
-  const plotDataLabels = readDataLabels(childrenByLocalName(chartNode, 'dLbls')[0]);
+  const plotDataLabels = readDataLabels(
+    childrenByLocalName(chartNode, 'dLbls')[0],
+  );
   const grouping = attr(childByLocalName(chartNode, 'grouping'), 'val');
   const stacking: OfficeChartSeries['stacking'] =
-    grouping === 'stacked' || grouping === 'percentStacked' ? grouping : undefined;
+    grouping === 'stacked' || grouping === 'percentStacked'
+      ? grouping
+      : undefined;
   const stackGroup = stacking ? `office-chart-${type}` : undefined;
-  const categories = readCacheValues(descendantByLocalName(firstSeries, 'cat'), date1904).map(decodeMojibake);
-  const firstSliceAngle = Number(attr(childByLocalName(chartNode, 'firstSliceAng'), 'val'));
+  const categories = readCacheValues(
+    descendantByLocalName(firstSeries, 'cat'),
+    date1904,
+  ).map(decodeMojibake);
+  const firstSliceAngle = Number(
+    attr(childByLocalName(chartNode, 'firstSliceAng'), 'val'),
+  );
   const gapWidth = readPositiveNumber(childByLocalName(chartNode, 'gapWidth'));
-  const overlapValue = Number(attr(childByLocalName(chartNode, 'overlap'), 'val'));
+  const overlapValue = Number(
+    attr(childByLocalName(chartNode, 'overlap'), 'val'),
+  );
   const overlap = Number.isFinite(overlapValue) ? overlapValue : undefined;
   const series = seriesNodes.map((seriesNode, index) => ({
-    name: firstText(descendantByLocalName(seriesNode, 'tx')) || `Series ${index + 1}`,
+    name:
+      firstText(descendantByLocalName(seriesNode, 'tx')) ||
+      `Series ${index + 1}`,
     type,
     stacking,
     stackGroup,
@@ -633,30 +750,55 @@ function readChartPlot(chartNode: Element, theme: OfficeTheme, date1904: boolean
     overlap,
     values: readNumericValues(descendantByLocalName(seriesNode, 'val')),
     color: readSeriesColorWithTheme(seriesNode, theme),
-    lineWidth: readLineWidth(childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln')),
+    lineWidth: readLineWidth(
+      childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln'),
+    ),
     pointColors: readPointColors(seriesNode, theme),
     pointStyles: readPointStyles(seriesNode, theme),
-    dataLabels: readDataLabels(childrenByLocalName(seriesNode, 'dLbls')[0]) ?? plotDataLabels,
-    smooth: attr(childByLocalName(seriesNode, 'smooth'), 'val') === '1' || attr(childByLocalName(seriesNode, 'smooth'), 'val') === 'true',
+    dataLabels:
+      readDataLabels(childrenByLocalName(seriesNode, 'dLbls')[0]) ??
+      plotDataLabels,
+    smooth:
+      attr(childByLocalName(seriesNode, 'smooth'), 'val') === '1' ||
+      attr(childByLocalName(seriesNode, 'smooth'), 'val') === 'true',
     marker: readSeriesMarker(seriesNode),
   }));
   const firstValueCount = series[0]?.values.length ?? 0;
   const ofPieTypeValue = attr(childByLocalName(chartNode, 'ofPieType'), 'val');
-  const ofPieType = chartKind === 'ofpiechart' && (ofPieTypeValue === 'bar' || ofPieTypeValue === 'pie') ? ofPieTypeValue : undefined;
+  const ofPieType =
+    chartKind === 'ofpiechart' &&
+    (ofPieTypeValue === 'bar' || ofPieTypeValue === 'pie')
+      ? ofPieTypeValue
+      : undefined;
 
   return {
     type,
     categories,
     series,
     dataLabels: plotDataLabels,
-    holeSize: type === 'doughnut' ? Number(attr(childByLocalName(chartNode, 'holeSize'), 'val') ?? 0) || undefined : undefined,
-    startAngle: isPieLikeChart(type, ofPieType) ? Number.isFinite(firstSliceAngle) ? firstSliceAngle : 0 : undefined,
+    holeSize:
+      type === 'doughnut'
+        ? Number(attr(childByLocalName(chartNode, 'holeSize'), 'val') ?? 0) ||
+          undefined
+        : undefined,
+    startAngle: isPieLikeChart(type, ofPieType)
+      ? Number.isFinite(firstSliceAngle)
+        ? firstSliceAngle
+        : 0
+      : undefined,
     ofPieType,
-    ofPieSecondPlotCount: ofPieType ? readOfPieSecondPlotCount(chartNode, firstValueCount) : undefined,
-    secondPieSize: ofPieType ? readPositiveNumber(childByLocalName(chartNode, 'secondPieSize')) : undefined,
+    ofPieSecondPlotCount: ofPieType
+      ? readOfPieSecondPlotCount(chartNode, firstValueCount)
+      : undefined,
+    secondPieSize: ofPieType
+      ? readPositiveNumber(childByLocalName(chartNode, 'secondPieSize'))
+      : undefined,
     gapWidth,
     overlap,
-    radarStyle: type === 'radar' ? attr(childByLocalName(chartNode, 'radarStyle'), 'val') : undefined,
+    radarStyle:
+      type === 'radar'
+        ? attr(childByLocalName(chartNode, 'radarStyle'), 'val')
+        : undefined,
   };
 }
 
@@ -668,9 +810,15 @@ function niceRadarMax(value: number) {
   return step * magnitude;
 }
 
-function buildRadarIndicators(categories: string[], series: OfficeChartSeries[]) {
+function buildRadarIndicators(
+  categories: string[],
+  series: OfficeChartSeries[],
+) {
   return categories.map((name, index) => {
-    const maxValue = series.reduce((acc, item) => Math.max(acc, item.values[index] ?? 0), 0);
+    const maxValue = series.reduce(
+      (acc, item) => Math.max(acc, item.values[index] ?? 0),
+      0,
+    );
     return {
       name,
       max: niceRadarMax(maxValue),
@@ -678,23 +826,33 @@ function buildRadarIndicators(categories: string[], series: OfficeChartSeries[])
   });
 }
 
-export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OFFICE_THEME): OfficeChartModel {
+export function parseOfficeChartXml(
+  xml: string,
+  theme: OfficeTheme = DEFAULT_OFFICE_THEME,
+): OfficeChartModel {
   // 先把 OOXML chart 统一成中间模型，组件层不直接依赖复杂的 c:* XML 结构。
   const doc = parseXml(xml);
   const chartSpace = doc.documentElement;
   const chart = descendantByLocalName(chartSpace, 'chart');
   const plotArea = descendantByLocalName(chart, 'plotArea');
   const date1904 = readDate1904(chartSpace);
-  const plots = findChartNodes(plotArea).map((chartNode) => readChartPlot(chartNode, theme, date1904));
+  const plots = findChartNodes(plotArea).map((chartNode) =>
+    readChartPlot(chartNode, theme, date1904),
+  );
   const primaryPlot = plots[0];
   const categories = primaryPlot?.categories ?? [];
   const series = plots.flatMap((plot) => plot.series);
   const type = primaryPlot?.type ?? 'unknown';
   const rawTitle = firstText(childByLocalName(chart, 'title'));
-  const autoTitleDeleted = attr(childByLocalName(chart, 'autoTitleDeleted'), 'val');
+  const autoTitleDeleted = attr(
+    childByLocalName(chart, 'autoTitleDeleted'),
+    'val',
+  );
   const title =
     rawTitle ||
-    (childByLocalName(chart, 'title') && autoTitleDeleted !== '1' && autoTitleDeleted !== 'true'
+    (childByLocalName(chart, 'title') &&
+    autoTitleDeleted !== '1' &&
+    autoTitleDeleted !== 'true'
       ? series[0]?.name
       : undefined);
 
@@ -707,10 +865,14 @@ export function parseOfficeChartXml(xml: string, theme: OfficeTheme = DEFAULT_OF
     legendPosition: readLegendPosition(childByLocalName(chart, 'legend')),
     legendStyle: readLegendStyle(childByLocalName(chart, 'legend'), theme),
     showDataLabels: readShowDataLabels(plotArea),
-    radarIndicators: type === 'radar' ? buildRadarIndicators(categories, series) : undefined,
+    radarIndicators:
+      type === 'radar' ? buildRadarIndicators(categories, series) : undefined,
     holeSize: primaryPlot?.holeSize,
     startAngle: primaryPlot?.startAngle,
-    ofPieType: primaryPlot?.ofPieType === 'bar' || primaryPlot?.ofPieType === 'pie' ? primaryPlot.ofPieType : undefined,
+    ofPieType:
+      primaryPlot?.ofPieType === 'bar' || primaryPlot?.ofPieType === 'pie'
+        ? primaryPlot.ofPieType
+        : undefined,
     ofPieSecondPlotCount: primaryPlot?.ofPieSecondPlotCount,
     secondPieSize: primaryPlot?.secondPieSize,
     gapWidth: primaryPlot?.gapWidth,
@@ -728,7 +890,10 @@ function resolveCategories(chart: OfficeChartModel) {
     return chart.categories;
   }
 
-  const maxLength = Math.max(...chart.series.map((series) => series.values.length), 0);
+  const maxLength = Math.max(
+    ...chart.series.map((series) => series.values.length),
+    0,
+  );
   return Array.from({ length: maxLength }, (_, index) => String(index + 1));
 }
 
@@ -743,17 +908,26 @@ function normalizeSeriesType(type: OfficeChartType) {
 
 function sanitizeMapRegionName(name: string) {
   return name
-    .replace(/特别行政区$|壮族自治区$|回族自治区$|维吾尔自治区$|自治区$|省$|市$/g, '')
+    .replace(
+      /特别行政区$|壮族自治区$|回族自治区$|维吾尔自治区$|自治区$|省$|市$/g,
+      '',
+    )
     .trim();
 }
 
-function scaleRoseRadius(radius: [string, string] | undefined): [string, string] | undefined {
+function scaleRoseRadius(
+  radius: [string, string] | undefined,
+): [string, string] | undefined {
   if (!radius) return undefined;
   const inner = Number(radius[0].replace(/%$/, ''));
   const outer = Number(radius[1].replace(/%$/, ''));
-  if (!Number.isFinite(inner) || !Number.isFinite(outer) || outer <= 0) return radius;
+  if (!Number.isFinite(inner) || !Number.isFinite(outer) || outer <= 0)
+    return radius;
   const fittedOuter = Math.min(58, outer);
-  const fittedInner = Math.max(0, Math.min(fittedOuter - 4, Math.round((inner / outer) * fittedOuter)));
+  const fittedInner = Math.max(
+    0,
+    Math.min(fittedOuter - 4, Math.round((inner / outer) * fittedOuter)),
+  );
   return [`${fittedInner}%`, `${fittedOuter}%`];
 }
 
@@ -800,7 +974,8 @@ function buildLegend(chart: OfficeChartModel, itemCount = chart.series.length) {
 
 function buildChartGrid(chart: OfficeChartModel) {
   const isBottomLegend = chart.legendPosition === 'bottom';
-  const isSideLegend = chart.legendPosition === 'left' || chart.legendPosition === 'right';
+  const isSideLegend =
+    chart.legendPosition === 'left' || chart.legendPosition === 'right';
   return {
     left: isSideLegend ? 70 : 40,
     right: isSideLegend ? 70 : 24,
@@ -828,7 +1003,7 @@ function buildOfficeTitle(chart: OfficeChartModel) {
 
 function resolveOfficePieStartAngle(chart: OfficeChartModel) {
   const officeAngle = chart.startAngle ?? 0;
-  return ((90 - officeAngle) % 360 + 360) % 360;
+  return (((90 - officeAngle) % 360) + 360) % 360;
 }
 
 function resolveOfficeRadarStartAngle(chart: OfficeChartModel) {
@@ -836,7 +1011,9 @@ function resolveOfficeRadarStartAngle(chart: OfficeChartModel) {
 }
 
 function resolveOfficeRadarRadius(chart: OfficeChartModel) {
-  return chart.radarRadius ?? (chart.legendPosition === 'bottom' ? '62%' : '68%');
+  return (
+    chart.radarRadius ?? (chart.legendPosition === 'bottom' ? '62%' : '68%')
+  );
 }
 
 function reorderRadarAxes<T>(items: T[]) {
@@ -845,22 +1022,34 @@ function reorderRadarAxes<T>(items: T[]) {
 }
 
 function resolveOfficeRadarCenter(chart: OfficeChartModel): [string, string] {
-  if (chart.legendPosition === 'bottom') return ['50%', chart.title ? '52%' : '48%'];
-  if (chart.legendPosition === 'top') return ['50%', chart.title ? '58%' : '56%'];
+  if (chart.legendPosition === 'bottom')
+    return ['50%', chart.title ? '52%' : '48%'];
+  if (chart.legendPosition === 'top')
+    return ['50%', chart.title ? '58%' : '56%'];
   return ['50%', chart.title ? '56%' : '52%'];
 }
 
-function resolveBarWidthFromGap(gapWidth: number | undefined, seriesCount: number, overlap?: number) {
+function resolveBarWidthFromGap(
+  gapWidth: number | undefined,
+  seriesCount: number,
+  overlap?: number,
+) {
   if (!Number.isFinite(gapWidth) || gapWidth === undefined) return undefined;
   const visibleSeriesCount = Math.max(1, seriesCount);
   const overlapRatio = Math.max(-1, Math.min(1, (overlap ?? 0) / 100));
-  const effectiveSeriesCount = Math.max(1, visibleSeriesCount - Math.max(0, overlapRatio) * (visibleSeriesCount - 1));
+  const effectiveSeriesCount = Math.max(
+    1,
+    visibleSeriesCount - Math.max(0, overlapRatio) * (visibleSeriesCount - 1),
+  );
   const categoryWidth = 72;
   const width = categoryWidth / (effectiveSeriesCount + gapWidth / 100);
   return Math.max(6, Math.min(46, Math.round(width)));
 }
 
-function readPieLabelPosition(labels?: OfficeDataLabels, fallback: 'outside' | 'inside' = 'outside') {
+function readPieLabelPosition(
+  labels?: OfficeDataLabels,
+  fallback: 'outside' | 'inside' = 'outside',
+) {
   const position = labels?.position?.toLowerCase();
   if (!position) return fallback;
   if (position.includes('in')) return 'inside';
@@ -868,7 +1057,10 @@ function readPieLabelPosition(labels?: OfficeDataLabels, fallback: 'outside' | '
   return fallback;
 }
 
-function readCartesianLabelPosition(labels?: OfficeDataLabels, horizontal = false) {
+function readCartesianLabelPosition(
+  labels?: OfficeDataLabels,
+  horizontal = false,
+) {
   const position = labels?.position?.toLowerCase();
   if (!position) return horizontal ? 'right' : 'top';
   if (position === 'ctr' || position === 'center') return 'inside';
@@ -880,31 +1072,51 @@ function readCartesianLabelPosition(labels?: OfficeDataLabels, horizontal = fals
   return horizontal ? 'right' : 'top';
 }
 
-function buildDataLabelFormatter(labels: OfficeDataLabels | undefined, categories: string[]) {
+function buildDataLabelFormatter(
+  labels: OfficeDataLabels | undefined,
+  categories: string[],
+) {
   const showValue = labels?.showVal ?? false;
   const showCategory = labels?.showCatName ?? false;
   const showSeries = labels?.showSerName ?? false;
   const showPercent = labels?.showPercent ?? false;
   const separator = labels?.separator ?? '\n';
   return (params: unknown) => {
-    const item = params as { name?: string; value?: unknown; dataIndex?: number; percent?: number; seriesName?: string };
-    const value = Array.isArray(item.value) ? item.value[item.value.length - 1] : item.value;
-    const category = item.name ?? (item.dataIndex !== undefined ? categories[item.dataIndex] : undefined);
+    const item = params as {
+      name?: string;
+      value?: unknown;
+      dataIndex?: number;
+      percent?: number;
+      seriesName?: string;
+    };
+    const value = Array.isArray(item.value)
+      ? item.value[item.value.length - 1]
+      : item.value;
+    const category =
+      item.name ??
+      (item.dataIndex !== undefined ? categories[item.dataIndex] : undefined);
     const parts: string[] = [];
     if (showSeries && item.seriesName) parts.push(item.seriesName);
     if (showCategory && category) parts.push(category);
     if (showValue && value !== undefined) parts.push(String(value));
-    if (showPercent && item.percent !== undefined) parts.push(`${item.percent}%`);
+    if (showPercent && item.percent !== undefined)
+      parts.push(`${item.percent}%`);
     return parts.join(separator).trim();
   };
 }
 
-function shouldShowDataLabels(labels: OfficeDataLabels | undefined, chartShowDataLabels?: boolean) {
+function shouldShowDataLabels(
+  labels: OfficeDataLabels | undefined,
+  chartShowDataLabels?: boolean,
+) {
   if (labels?.delete) return false;
   if (!labels) return Boolean(chartShowDataLabels);
-  const explicitFlags = [labels.showVal, labels.showCatName, labels.showSerName, labels.showPercent].filter(
-    (value) => value !== undefined,
-  );
+  const explicitFlags = [
+    labels.showVal,
+    labels.showCatName,
+    labels.showSerName,
+    labels.showPercent,
+  ].filter((value) => value !== undefined);
   if (explicitFlags.length) return explicitFlags.some(Boolean);
   return Boolean(chartShowDataLabels);
 }
@@ -915,7 +1127,8 @@ function buildCartesianDataLabelConfig(
   categories: string[],
   horizontal = false,
 ) {
-  const effectiveLabels = labels ?? (chartShowDataLabels ? { showVal: true } : undefined);
+  const effectiveLabels =
+    labels ?? (chartShowDataLabels ? { showVal: true } : undefined);
   return {
     show: shouldShowDataLabels(effectiveLabels, chartShowDataLabels),
     position: readCartesianLabelPosition(effectiveLabels, horizontal),
@@ -925,7 +1138,10 @@ function buildCartesianDataLabelConfig(
   };
 }
 
-function buildPieDataLabelConfig(labels: OfficeDataLabels | undefined, showDataLabels?: boolean) {
+function buildPieDataLabelConfig(
+  labels: OfficeDataLabels | undefined,
+  showDataLabels?: boolean,
+) {
   const position = readPieLabelPosition(labels, 'outside');
   const showValue = labels?.showVal ?? showDataLabels;
   const showCategory = labels?.showCatName ?? false;
@@ -933,39 +1149,75 @@ function buildPieDataLabelConfig(labels: OfficeDataLabels | undefined, showDataL
   const showPercent = labels?.showPercent ?? false;
   const separator = labels?.separator ?? '\n';
   const formatter = (params: unknown) => {
-    const item = params as { name?: string; data?: { name?: string }; value?: number; percent?: number; seriesName?: string };
+    const item = params as {
+      name?: string;
+      data?: { name?: string };
+      value?: number;
+      percent?: number;
+      seriesName?: string;
+    };
     const parts: string[] = [];
     if (showSeries && item.seriesName) parts.push(item.seriesName);
-    if (showCategory && (item.data?.name ?? item.name)) parts.push(item.data?.name ?? item.name ?? '');
+    if (showCategory && (item.data?.name ?? item.name))
+      parts.push(item.data?.name ?? item.name ?? '');
     if (showValue && item.value !== undefined) parts.push(String(item.value));
-    if (showPercent && item.percent !== undefined) parts.push(`${item.percent}%`);
+    if (showPercent && item.percent !== undefined)
+      parts.push(`${item.percent}%`);
     return parts.join(separator).trim();
   };
 
   return {
-    show: !labels?.delete && Boolean(showValue || showCategory || showSeries || showPercent || showDataLabels),
+    show:
+      !labels?.delete &&
+      Boolean(
+        showValue ||
+          showCategory ||
+          showSeries ||
+          showPercent ||
+          showDataLabels,
+      ),
     position,
     formatter,
   };
 }
 
-function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], palette: string[]): EChartsOption {
+function buildOfPieChartOption(
+  chart: OfficeChartModel,
+  categories: string[],
+  palette: string[],
+): EChartsOption {
   const sourceSeries = chart.series[0];
   const pieLabels = chart.dataLabels ?? sourceSeries?.dataLabels;
   const values = sourceSeries?.values ?? [];
-  const secondCount = Math.max(1, Math.min(values.length - 1, chart.ofPieSecondPlotCount ?? Math.ceil(values.length / 3)));
+  const secondCount = Math.max(
+    1,
+    Math.min(
+      values.length - 1,
+      chart.ofPieSecondPlotCount ?? Math.ceil(values.length / 3),
+    ),
+  );
   const splitIndex = Math.max(1, values.length - secondCount);
   const mainNames = categories.slice(0, splitIndex);
   const secondaryNames = categories.slice(splitIndex, values.length);
   const secondaryValues = values.slice(splitIndex);
   const secondaryTotal = secondaryValues.reduce((sum, value) => sum + value, 0);
   const otherName = '其他';
-  const otherStyle = buildPieItemStyle(sourceSeries, categories.length, palette);
+  const otherStyle = buildPieItemStyle(
+    sourceSeries,
+    categories.length,
+    palette,
+  );
   const startAngle = resolveOfficePieStartAngle(chart);
   const total = values.reduce((sum, value) => sum + value, 0);
-  const beforeOtherTotal = values.slice(0, splitIndex).reduce((sum, value) => sum + value, 0);
-  const otherStart = total ? startAngle - (beforeOtherTotal / total) * 360 : startAngle;
-  const otherEnd = total ? otherStart - (secondaryTotal / total) * 360 : startAngle;
+  const beforeOtherTotal = values
+    .slice(0, splitIndex)
+    .reduce((sum, value) => sum + value, 0);
+  const otherStart = total
+    ? startAngle - (beforeOtherTotal / total) * 360
+    : startAngle;
+  const otherEnd = total
+    ? otherStart - (secondaryTotal / total) * 360
+    : startAngle;
   const otherMid = ((otherStart + otherEnd) / 2) * (Math.PI / 180);
   const connectorAnchorX = 34 + Math.cos(otherMid) * 23;
   const connectorAnchorY = (chart.title ? 58 : 52) - Math.sin(otherMid) * 23;
@@ -980,12 +1232,19 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
       value: secondaryTotal,
       itemStyle: otherStyle,
       tooltip: {
-        formatter: `${otherName}<br/>${sourceSeries?.name ?? ''}: ${secondaryTotal}`,
+        formatter: `${otherName}<br/>${
+          sourceSeries?.name ?? ''
+        }: ${secondaryTotal}`,
       },
     },
   ];
-  const secondarySize = Math.max(28, Math.min(70, Math.round(52 * ((chart.secondPieSize ?? 75) / 75))));
-  const legend = buildLegend(chart, categories.length) as Record<string, unknown> | undefined;
+  const secondarySize = Math.max(
+    28,
+    Math.min(70, Math.round(52 * ((chart.secondPieSize ?? 75) / 75))),
+  );
+  const legend = buildLegend(chart, categories.length) as
+    | Record<string, unknown>
+    | undefined;
   const tooltip = {
     trigger: 'item' as const,
     confine: true,
@@ -997,9 +1256,23 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
       fontFamily: OFFICE_FONT_FAMILY,
     },
     formatter: (params: unknown) => {
-      const item = params as { componentSubType?: string; data?: { name?: string }; name?: string; seriesName?: string; value?: unknown };
-      const value = typeof item.value === 'number' ? item.value : Array.isArray(item.value) ? item.value[0] : '';
-      const name = item.componentSubType === 'bar' ? item.seriesName : item.data?.name ?? item.name ?? '';
+      const item = params as {
+        componentSubType?: string;
+        data?: { name?: string };
+        name?: string;
+        seriesName?: string;
+        value?: unknown;
+      };
+      const value =
+        typeof item.value === 'number'
+          ? item.value
+          : Array.isArray(item.value)
+          ? item.value[0]
+          : '';
+      const name =
+        item.componentSubType === 'bar'
+          ? item.seriesName
+          : item.data?.name ?? item.name ?? '';
       return `${name}<br/>${sourceSeries?.name ?? ''}: ${value}`;
     },
   };
@@ -1025,7 +1298,11 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
             data: secondaryNames.map((name, index) => ({
               name,
               value: secondaryValues[index] ?? 0,
-              itemStyle: buildPieItemStyle(sourceSeries, splitIndex + index, palette),
+              itemStyle: buildPieItemStyle(
+                sourceSeries,
+                splitIndex + index,
+                palette,
+              ),
             })),
           },
         ]
@@ -1033,13 +1310,20 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
           name,
           type: 'bar' as const,
           stack: 'office-of-pie-secondary',
-          barWidth: Math.max(26, Math.min(46, Math.round(secondarySize * 0.72))),
+          barWidth: Math.max(
+            26,
+            Math.min(46, Math.round(secondarySize * 0.72)),
+          ),
           xAxisIndex: 0,
           yAxisIndex: 0,
           data: [
             {
               value: secondaryValues[index] ?? 0,
-              itemStyle: buildPieItemStyle(sourceSeries, splitIndex + index, palette),
+              itemStyle: buildPieItemStyle(
+                sourceSeries,
+                splitIndex + index,
+                palette,
+              ),
             },
           ],
           label: {
@@ -1150,14 +1434,20 @@ function buildOfPieChartOption(chart: OfficeChartModel, categories: string[], pa
 export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   // 中间模型在这里映射为 ECharts option，PPTX/DOCX/XLSX 共用同一套图表渲染逻辑。
   const categories = resolveCategories(chart);
-  const normalizedSeriesTypes = chart.series.map((item) => normalizeSeriesType(item.type ?? chart.type));
+  const normalizedSeriesTypes = chart.series.map((item) =>
+    normalizeSeriesType(item.type ?? chart.type),
+  );
   const uniqueSeriesTypes = new Set(normalizedSeriesTypes);
   const isHorizontalBar = chart.type === 'bar';
   const isPie = chart.type === 'pie' || chart.type === 'doughnut';
   const isRadar = chart.type === 'radar';
-  const isScatter = normalizedSeriesTypes.length > 0 && normalizedSeriesTypes.every((type) => type === 'scatter');
+  const isScatter =
+    normalizedSeriesTypes.length > 0 &&
+    normalizedSeriesTypes.every((type) => type === 'scatter');
   const usesMixedSeriesTypes = uniqueSeriesTypes.size > 1;
-  const palette = chart.series.map((series, index) => resolveSeriesColor(series, index));
+  const palette = chart.series.map((series, index) =>
+    resolveSeriesColor(series, index),
+  );
   const hasSeries = chart.series.length > 0;
 
   if (!hasSeries) {
@@ -1177,14 +1467,22 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
     };
   }
 
-  const radarIndicators = chart.radarIndicators ?? (isRadar ? buildRadarIndicators(categories, chart.series) : undefined);
-  const radarDisplayIndicators = isRadar && radarIndicators?.length ? reorderRadarAxes(radarIndicators) : undefined;
-  const radarCategories = radarDisplayIndicators?.map((indicator) => indicator.name) ?? categories;
+  const radarIndicators =
+    chart.radarIndicators ??
+    (isRadar ? buildRadarIndicators(categories, chart.series) : undefined);
+  const radarDisplayIndicators =
+    isRadar && radarIndicators?.length
+      ? reorderRadarAxes(radarIndicators)
+      : undefined;
+  const radarCategories =
+    radarDisplayIndicators?.map((indicator) => indicator.name) ?? categories;
 
   if (chart.type === 'map') {
     const sourceSeries = chart.series[0];
     const values = sourceSeries?.values ?? [];
-    const tierNames = Array.from(new Set((sourceSeries?.pointLabels ?? []).filter(Boolean)));
+    const tierNames = Array.from(
+      new Set((sourceSeries?.pointLabels ?? []).filter(Boolean)),
+    );
     const tierColors = tierNames
       .map((tier) => {
         const index = sourceSeries?.pointLabels?.indexOf(tier) ?? -1;
@@ -1236,10 +1534,16 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
           fontFamily: OFFICE_FONT_FAMILY,
         },
         formatter: (params: unknown) => {
-          const item = params as { data?: { tierName?: string }; name?: string; value?: unknown };
+          const item = params as {
+            data?: { tierName?: string };
+            name?: string;
+            value?: unknown;
+          };
           const value = typeof item.value === 'number' ? item.value : '';
           const tier = item.data?.tierName ? `<br/>${item.data.tierName}` : '';
-          return `${item.name ?? ''}<br/>${sourceSeries?.name ?? chart.mapSeriesName ?? ''}: ${value}${tier}`;
+          return `${item.name ?? ''}<br/>${
+            sourceSeries?.name ?? chart.mapSeriesName ?? ''
+          }: ${value}${tier}`;
         },
       },
       graphic: tierNames.length
@@ -1299,8 +1603,13 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
             fontFamily: OFFICE_FONT_FAMILY,
             fontSize: 9,
             formatter: (params: unknown) => {
-              const item = params as { data?: { labelName?: string }; name?: string };
-              return item.data?.labelName ?? sanitizeMapRegionName(item.name ?? '');
+              const item = params as {
+                data?: { labelName?: string };
+                name?: string;
+              };
+              return (
+                item.data?.labelName ?? sanitizeMapRegionName(item.name ?? '')
+              );
             },
           },
           data,
@@ -1371,10 +1680,13 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
         return {
           name: item.name,
           type: 'radar',
-          areaStyle: chart.radarStyle === 'filled' ? { opacity: 0.18 } : undefined,
+          areaStyle:
+            chart.radarStyle === 'filled' ? { opacity: 0.18 } : undefined,
           data: [
             {
-              value: reorderRadarAxes(item.values.slice(0, radarDisplayIndicators.length)),
+              value: reorderRadarAxes(
+                item.values.slice(0, radarDisplayIndicators.length),
+              ),
               name: item.name,
             },
           ],
@@ -1388,8 +1700,14 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
             color,
           },
           label: {
-            show: shouldShowDataLabels(item.dataLabels ?? chart.dataLabels, chart.showDataLabels),
-            formatter: buildDataLabelFormatter(item.dataLabels ?? chart.dataLabels, radarCategories),
+            show: shouldShowDataLabels(
+              item.dataLabels ?? chart.dataLabels,
+              chart.showDataLabels,
+            ),
+            formatter: buildDataLabelFormatter(
+              item.dataLabels ?? chart.dataLabels,
+              radarCategories,
+            ),
             color: '#334155',
             fontFamily: OFFICE_FONT_FAMILY,
           },
@@ -1410,9 +1728,13 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       value: sourceSeries?.values[index] ?? 0,
       itemStyle: buildPieItemStyle(sourceSeries, index, palette),
     }));
-    const innerRadius = chart.type === 'doughnut' && chart.holeSize
-      ? `${Math.max(8, Math.min(90, Math.round(68 * (chart.holeSize / 100))))}%`
-      : '0%';
+    const innerRadius =
+      chart.type === 'doughnut' && chart.holeSize
+        ? `${Math.max(
+            8,
+            Math.min(90, Math.round(68 * (chart.holeSize / 100))),
+          )}%`
+        : '0%';
     const radius: [string, string] = chart.roseType
       ? scaleRoseRadius(chart.radius) ?? [innerRadius, '58%']
       : chart.radius ?? [innerRadius, '68%'];
@@ -1480,16 +1802,39 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   }
 
   const series = chart.series.map((item, index) => {
-    const seriesType = normalizeSeriesType(item.type ?? chart.type) as 'line' | 'bar' | 'scatter' | 'radar' | 'pie';
+    const seriesType = normalizeSeriesType(item.type ?? chart.type) as
+      | 'line'
+      | 'bar'
+      | 'scatter'
+      | 'radar'
+      | 'pie';
     const color = resolveSeriesColor(item, index);
     const isBarSeries = seriesType === 'bar';
     const isLineSeries = seriesType === 'line';
-    const markerSymbol = item.marker?.symbol && item.marker.symbol !== 'none' ? item.marker.symbol : undefined;
+    const markerSymbol =
+      item.marker?.symbol && item.marker.symbol !== 'none'
+        ? item.marker.symbol
+        : undefined;
     const hideSymbol = item.marker?.symbol === 'none';
     const isBubbleSeries = item.type === 'bubble';
-    const barSeriesCount = chart.series.filter((seriesItem) => normalizeSeriesType(seriesItem.type ?? chart.type) === 'bar' && !seriesItem.stackGroup).length;
-    const barWidth = isBarSeries ? resolveBarWidthFromGap(item.gapWidth ?? chart.gapWidth, barSeriesCount, item.overlap ?? chart.overlap) : undefined;
-    const labelConfig = buildCartesianDataLabelConfig(item.dataLabels ?? chart.dataLabels, chart.showDataLabels, categories, isHorizontalBar);
+    const barSeriesCount = chart.series.filter(
+      (seriesItem) =>
+        normalizeSeriesType(seriesItem.type ?? chart.type) === 'bar' &&
+        !seriesItem.stackGroup,
+    ).length;
+    const barWidth = isBarSeries
+      ? resolveBarWidthFromGap(
+          item.gapWidth ?? chart.gapWidth,
+          barSeriesCount,
+          item.overlap ?? chart.overlap,
+        )
+      : undefined;
+    const labelConfig = buildCartesianDataLabelConfig(
+      item.dataLabels ?? chart.dataLabels,
+      chart.showDataLabels,
+      categories,
+      isHorizontalBar,
+    );
 
     return {
       name: item.name,
@@ -1497,7 +1842,10 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       stack: item.stackGroup,
       data:
         isScatter || isBubbleSeries
-          ? item.values.map((value, valueIndex) => [categories[valueIndex] ?? String(valueIndex + 1), value])
+          ? item.values.map((value, valueIndex) => [
+              categories[valueIndex] ?? String(valueIndex + 1),
+              value,
+            ])
           : item.values,
       areaStyle: item.type === 'area' ? { opacity: 0.18 } : undefined,
       smooth: item.smooth ?? (item.type === 'line' || item.type === 'area'),
@@ -1520,16 +1868,33 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
         },
         lineStyle: {
           color,
-          width: item.lineWidth ? item.lineWidth + 1 : isLineSeries || item.type === 'area' ? 3 : 1,
+          width: item.lineWidth
+            ? item.lineWidth + 1
+            : isLineSeries || item.type === 'area'
+            ? 3
+            : 1,
         },
       },
-      showSymbol: hideSymbol ? false : markerSymbol ? true : isLineSeries || item.type === 'area' || isBubbleSeries || seriesType === 'scatter',
+      showSymbol: hideSymbol
+        ? false
+        : markerSymbol
+        ? true
+        : isLineSeries ||
+          item.type === 'area' ||
+          isBubbleSeries ||
+          seriesType === 'scatter',
       symbol: markerSymbol,
       symbolSize: item.marker?.size ?? (isBubbleSeries ? 14 : 8),
       label: labelConfig,
       barWidth,
-      barGap: isBarSeries && item.overlap !== undefined ? `${-item.overlap}%` : undefined,
-      barCategoryGap: isBarSeries && item.gapWidth !== undefined ? `${item.gapWidth}%` : undefined,
+      barGap:
+        isBarSeries && item.overlap !== undefined
+          ? `${-item.overlap}%`
+          : undefined,
+      barCategoryGap:
+        isBarSeries && item.gapWidth !== undefined
+          ? `${item.gapWidth}%`
+          : undefined,
       barMaxWidth: isBarSeries && !barWidth ? 32 : undefined,
     };
   }) as EChartsOption['series'];
@@ -1655,9 +2020,17 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   };
 }
 
-function buildPieItemStyle(series: OfficeChartSeries | undefined, index: number, palette: string[]) {
+function buildPieItemStyle(
+  series: OfficeChartSeries | undefined,
+  index: number,
+  palette: string[],
+) {
   const pointStyle = series?.pointStyles?.[index];
-  const fallbackColor = series?.pointColors?.[index] ?? (series ? resolveSeriesColor(series, index) : palette[index % palette.length]);
+  const fallbackColor =
+    series?.pointColors?.[index] ??
+    (series
+      ? resolveSeriesColor(series, index)
+      : palette[index % palette.length]);
   const color = pointStyle?.color ?? fallbackColor;
   const itemStyle: Record<string, unknown> = {
     color,

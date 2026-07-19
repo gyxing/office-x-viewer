@@ -12,7 +12,10 @@ export type OfficeRelationship = {
   type?: string;
 };
 
-export type OfficeRelationshipMap = Record<string, Record<string, OfficeRelationship>>;
+export type OfficeRelationshipMap = Record<
+  string,
+  Record<string, OfficeRelationship>
+>;
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = '';
@@ -41,7 +44,11 @@ export function createMediaStore() {
     byName: {},
   };
 
-  function register(path: string, bytes: Uint8Array, contentType = imageMimeType(path)) {
+  function register(
+    path: string,
+    bytes: Uint8Array,
+    contentType = imageMimeType(path),
+  ) {
     const dataUrl = bytesToDataUrl(bytes, contentType);
     const fileName = path.split('/').pop() ?? path;
     store.byPath[path] = dataUrl;
@@ -90,7 +97,9 @@ export function resolvePackageMediaRef(
   const fileName = target.split('/').pop() ?? target;
   return (
     mediaByPath[target] ??
-    mediaByPath[`${rootDir}/${target.replace(new RegExp(`^${rootDir}/`), '')}`] ??
+    mediaByPath[
+      `${rootDir}/${target.replace(new RegExp(`^${rootDir}/`), '')}`
+    ] ??
     mediaByName[fileName]
   );
 }

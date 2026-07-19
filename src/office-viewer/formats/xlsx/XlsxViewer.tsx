@@ -1,5 +1,5 @@
 // XlsxViewer 负责 XLSX 工作簿预览的整体布局，包括工作表选择和当前工作表内容区。
-import { memo, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
@@ -13,9 +13,16 @@ type XlsxViewerProps = {
   onSelectSheet: (sheetId: string) => void;
 };
 
-function XlsxViewerComponent({ workbook, activeSheetId, zoom, onSelectSheet }: XlsxViewerProps) {
+function XlsxViewerComponent({
+  workbook,
+  activeSheetId,
+  zoom,
+  onSelectSheet,
+}: XlsxViewerProps) {
   const activeSheet = useMemo(
-    () => workbook?.sheets.find((sheet) => sheet.id === activeSheetId) ?? workbook?.sheets[0],
+    () =>
+      workbook?.sheets.find((sheet) => sheet.id === activeSheetId) ??
+      workbook?.sheets[0],
     [activeSheetId, workbook],
   );
 
@@ -25,7 +32,11 @@ function XlsxViewerComponent({ workbook, activeSheetId, zoom, onSelectSheet }: X
 
   return (
     <div className="oxv-xlsx-viewer">
-      <XlsxSheetTabs workbook={workbook} activeSheet={activeSheet} onSelectSheet={onSelectSheet} />
+      <XlsxSheetTabs
+        workbook={workbook}
+        activeSheet={activeSheet}
+        onSelectSheet={onSelectSheet}
+      />
       <XlsxSheetGrid sheet={activeSheet} zoom={zoom} />
     </div>
   );

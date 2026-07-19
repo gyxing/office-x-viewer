@@ -28,8 +28,25 @@ export type DocxPage = {
 export type DocxPosition = {
   left: number;
   top: number;
-  relativeFromH?: 'page' | 'margin' | 'column' | 'character' | 'leftMargin' | 'rightMargin' | 'insideMargin' | 'outsideMargin';
-  relativeFromV?: 'page' | 'margin' | 'paragraph' | 'line' | 'text' | 'topMargin' | 'bottomMargin' | 'insideMargin' | 'outsideMargin';
+  relativeFromH?:
+    | 'page'
+    | 'margin'
+    | 'column'
+    | 'character'
+    | 'leftMargin'
+    | 'rightMargin'
+    | 'insideMargin'
+    | 'outsideMargin';
+  relativeFromV?:
+    | 'page'
+    | 'margin'
+    | 'paragraph'
+    | 'line'
+    | 'text'
+    | 'topMargin'
+    | 'bottomMargin'
+    | 'insideMargin'
+    | 'outsideMargin';
   zIndex?: number;
   behindDoc?: boolean;
   rotation?: number;
@@ -120,7 +137,12 @@ export type DocxTableCell = {
   noWrap?: boolean;
 };
 
-export type DocxInline = DocxTextInline | DocxBreakInline | DocxImageInline | DocxChartInline | DocxShapeInline;
+export type DocxInline =
+  | DocxTextInline
+  | DocxBreakInline
+  | DocxImageInline
+  | DocxChartInline
+  | DocxShapeInline;
 
 export type DocxTextInline = {
   type: 'text';

@@ -1,6 +1,6 @@
 // XlsxSheetGrid 负责工作表滚动画布，统一承载表格、浮动图片和浮动图表。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { getXlsxSheetMetrics } from './sheetRenderUtils';
 import { XlsxFloatingCharts } from './XlsxFloatingCharts';

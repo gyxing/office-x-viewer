@@ -28,7 +28,17 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
     };
   }
 
-  const { left, top, relativeFromH, relativeFromV, zIndex, behindDoc, rotation, flipH, flipV } = position;
+  const {
+    left,
+    top,
+    relativeFromH,
+    relativeFromV,
+    zIndex,
+    behindDoc,
+    rotation,
+    flipH,
+    flipV,
+  } = position;
 
   // 确保 left 和 top 是有效数值
   const safeLeft = Number.isFinite(left) ? left : 0;
@@ -38,7 +48,9 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
   let calculatedLeft: string | number = safePx(safeLeft);
   if (relativeFromH === 'page') {
     // 相对于页面：需要减去页面左边距
-    calculatedLeft = `calc(${safePx(safeLeft)} - var(--oxv-docx-page-margin-left, 0px))`;
+    calculatedLeft = `calc(${safePx(
+      safeLeft,
+    )} - var(--oxv-docx-page-margin-left, 0px))`;
   } else if (relativeFromH === 'margin') {
     // 相对于边距区域：从内容区域左边缘开始
     calculatedLeft = safePx(safeLeft);
@@ -47,10 +59,14 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
     calculatedLeft = safePx(safeLeft);
   } else if (relativeFromH === 'leftMargin') {
     // 相对于左边距：从页面左边缘开始，减去左边距
-    calculatedLeft = `calc(${safePx(safeLeft)} - var(--oxv-docx-page-margin-left, 0px))`;
+    calculatedLeft = `calc(${safePx(
+      safeLeft,
+    )} - var(--oxv-docx-page-margin-left, 0px))`;
   } else if (relativeFromH === 'rightMargin') {
     // 相对于右边距：从页面右边缘开始
-    calculatedLeft = `calc(var(--oxv-docx-page-width, 100%) - var(--oxv-docx-page-margin-right, 0px) + ${safePx(safeLeft)} - var(--oxv-docx-page-margin-left, 0px))`;
+    calculatedLeft = `calc(var(--oxv-docx-page-width, 100%) - var(--oxv-docx-page-margin-right, 0px) + ${safePx(
+      safeLeft,
+    )} - var(--oxv-docx-page-margin-left, 0px))`;
   } else if (relativeFromH === 'insideMargin') {
     // 内侧边距（奇数页=左，偶数页=右）
     calculatedLeft = safePx(safeLeft);
@@ -66,7 +82,9 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
   let calculatedTop: string | number = safePx(safeTop);
   if (relativeFromV === 'page') {
     // 相对于页面：需要减去页面上边距
-    calculatedTop = `calc(${safePx(safeTop)} - var(--oxv-docx-page-margin-top, 0px))`;
+    calculatedTop = `calc(${safePx(
+      safeTop,
+    )} - var(--oxv-docx-page-margin-top, 0px))`;
   } else if (relativeFromV === 'margin') {
     // 相对于边距区域：从内容区域顶部开始
     calculatedTop = safePx(safeTop);
@@ -77,13 +95,19 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
     // 相对于行：从当前行顶部开始
     calculatedTop = safePx(safeTop);
   } else if (relativeFromV === 'text') {
-    calculatedTop = `calc(var(--oxv-docx-page-margin-top, 0px) + ${safePx(safeTop)})`;
+    calculatedTop = `calc(var(--oxv-docx-page-margin-top, 0px) + ${safePx(
+      safeTop,
+    )})`;
   } else if (relativeFromV === 'topMargin') {
     // 相对于上边距：从页面顶部开始，减去上边距
-    calculatedTop = `calc(${safePx(safeTop)} - var(--oxv-docx-page-margin-top, 0px))`;
+    calculatedTop = `calc(${safePx(
+      safeTop,
+    )} - var(--oxv-docx-page-margin-top, 0px))`;
   } else if (relativeFromV === 'bottomMargin') {
     // 相对于下边距：从页面底部开始
-    calculatedTop = `calc(var(--oxv-docx-page-height, 100%) - var(--oxv-docx-page-margin-bottom, 0px) + ${safePx(safeTop)} - var(--oxv-docx-page-margin-top, 0px))`;
+    calculatedTop = `calc(var(--oxv-docx-page-height, 100%) - var(--oxv-docx-page-margin-bottom, 0px) + ${safePx(
+      safeTop,
+    )} - var(--oxv-docx-page-margin-top, 0px))`;
   } else if (relativeFromV === 'insideMargin') {
     // 内侧边距（用于双面打印）
     calculatedTop = safePx(safeTop);
@@ -112,7 +136,10 @@ export function calculatePositionStyle(position: DocxPosition | undefined) {
     calculatedZIndex = 0;
   } else if (zIndex !== undefined && Number.isFinite(zIndex)) {
     // OOXML 的 relativeHeight 本身表达层叠顺序，压缩会抹平相邻对象的前后关系。
-    calculatedZIndex = Math.min(CSS_MAX_Z_INDEX, Math.max(1, Math.round(zIndex)));
+    calculatedZIndex = Math.min(
+      CSS_MAX_Z_INDEX,
+      Math.max(1, Math.round(zIndex)),
+    );
   } else {
     // 未指定 z-index 的浮动对象默认放在正文之上，但低于明确指定前景层级的对象。
     calculatedZIndex = 2;

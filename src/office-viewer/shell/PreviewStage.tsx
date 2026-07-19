@@ -1,17 +1,33 @@
 // OfficePreviewStage 根据当前文件格式切换到对应预览组件，并统一处理加载和错误态。
-import { lazy, memo, Suspense } from 'react';
+import React, { lazy, memo, Suspense } from 'react';
 import type { DocDocument } from '../services/doc/types';
 import type { DocxDocument } from '../services/docx/types';
-import type { PreviewKind } from '../services/preview';
 import type { PptxDocument } from '../services/pptx/types';
+import type { PreviewKind } from '../services/preview';
 import type { XlsxWorkbook } from '../services/xlsx/types';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
 
-const LazyPptxViewer = lazy(() => import('../formats/pptx/PptxViewer').then((module) => ({ default: module.PptxViewer })));
-const LazyXlsxViewer = lazy(() => import('../formats/xlsx/XlsxViewer').then((module) => ({ default: module.XlsxViewer })));
-const LazyDocxViewer = lazy(() => import('../formats/docx/DocxViewer').then((module) => ({ default: module.DocxViewer })));
-const LazyDocViewer = lazy(() => import('../formats/doc/DocViewer').then((module) => ({ default: module.DocViewer })));
+const LazyPptxViewer = lazy(() =>
+  import('../formats/pptx/PptxViewer').then((module) => ({
+    default: module.PptxViewer,
+  })),
+);
+const LazyXlsxViewer = lazy(() =>
+  import('../formats/xlsx/XlsxViewer').then((module) => ({
+    default: module.XlsxViewer,
+  })),
+);
+const LazyDocxViewer = lazy(() =>
+  import('../formats/docx/DocxViewer').then((module) => ({
+    default: module.DocxViewer,
+  })),
+);
+const LazyDocViewer = lazy(() =>
+  import('../formats/doc/DocViewer').then((module) => ({
+    default: module.DocViewer,
+  })),
+);
 
 type OfficePreviewStageProps = {
   loading: boolean;
@@ -49,13 +65,23 @@ function OfficePreviewStageComponent({
   return (
     <Suspense fallback={<OfficeLoading />}>
       {previewKind === 'xlsx' ? (
-        <LazyXlsxViewer workbook={xlsxWorkbook} activeSheetId={activeSheetId} zoom={zoom} onSelectSheet={onSelectSheet} />
+        <LazyXlsxViewer
+          workbook={xlsxWorkbook}
+          activeSheetId={activeSheetId}
+          zoom={zoom}
+          onSelectSheet={onSelectSheet}
+        />
       ) : previewKind === 'docx' ? (
         <LazyDocxViewer document={docxDocument} zoom={zoom} />
       ) : previewKind === 'doc' ? (
         <LazyDocViewer document={docDocument} zoom={zoom} />
       ) : (
-        <LazyPptxViewer document={pptxDocument} activeIndex={activeIndex} zoom={zoom} onSelectSlide={onSelectSlide} />
+        <LazyPptxViewer
+          document={pptxDocument}
+          activeIndex={activeIndex}
+          zoom={zoom}
+          onSelectSlide={onSelectSlide}
+        />
       )}
     </Suspense>
   );

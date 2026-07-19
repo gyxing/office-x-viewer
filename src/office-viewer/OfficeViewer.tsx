@@ -1,9 +1,18 @@
 // OfficeViewer 是组件库对外主入口，负责文件上传解析、格式状态和全局工具栏交互。
 import { Layout } from 'antd';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import './index.less';
 import type { DocDocument } from './services/doc/types';
 import type { DocxDocument } from './services/docx/types';
+import type { PptxDocument } from './services/pptx/types';
 import {
   detectPreviewKind,
   isSupportedOfficeFileName,
@@ -11,16 +20,22 @@ import {
   type ParsedOfficeFile,
   type PreviewKind,
 } from './services/preview';
-import type { PptxDocument } from './services/pptx/types';
 import type { XlsxWorkbook } from './services/xlsx/types';
-import './index.less';
 import { OfficePreviewStage } from './shell/PreviewStage';
 import { OfficeToolbar } from './shell/Toolbar';
-import { OFFICE_DEFAULT_ZOOM, OFFICE_MAX_ZOOM, OFFICE_MIN_ZOOM, OFFICE_ZOOM_STEP } from './shell/constants';
+import {
+  OFFICE_DEFAULT_ZOOM,
+  OFFICE_MAX_ZOOM,
+  OFFICE_MIN_ZOOM,
+  OFFICE_ZOOM_STEP,
+} from './shell/constants';
 
 const { Content } = Layout;
 
-export type OfficeViewerUri = File | string | (() => Promise<File | Blob | string | Response>);
+export type OfficeViewerUri =
+  | File
+  | string
+  | (() => Promise<File | Blob | string | Response>);
 
 export type OfficeViewerProps = {
   uri?: OfficeViewerUri;
@@ -34,9 +49,11 @@ export type OfficeViewerProps = {
 };
 
 const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    '.pptx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    '.docx',
   'application/msword': '.doc',
   'application/wps-office.wps': '.wps',
 };
@@ -64,7 +81,9 @@ function getFileNameFromContentDisposition(contentDisposition: string | null) {
 }
 
 function getExtensionFromMimeType(mimeType: string) {
-  return OFFICE_MIME_EXTENSION_MAP[mimeType.split(';')[0]?.trim().toLowerCase()];
+  return OFFICE_MIME_EXTENSION_MAP[
+    mimeType.split(';')[0]?.trim().toLowerCase()
+  ];
 }
 
 function hasFileExtension(fileName: string) {
@@ -73,56 +92,85 @@ function hasFileExtension(fileName: string) {
 
 function ensureSupportedOfficeFile(file: File) {
   if (!isSupportedOfficeFileName(file.name)) {
-    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
+    throw new Error(
+      '暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+    );
   }
 }
 
 function createFileFromBlob(blob: Blob, fileName?: string) {
-  if (fileName && hasFileExtension(fileName) && !isSupportedOfficeFileName(fileName)) {
-    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
+  if (
+    fileName &&
+    hasFileExtension(fileName) &&
+    !isSupportedOfficeFileName(fileName)
+  ) {
+    throw new Error(
+      '无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+    );
   }
 
   const extension = getExtensionFromMimeType(blob.type);
   const inferredFileName =
-    fileName && isSupportedOfficeFileName(fileName) ? fileName : extension ? `office-file${extension}` : undefined;
+    fileName && isSupportedOfficeFileName(fileName)
+      ? fileName
+      : extension
+      ? `office-file${extension}`
+      : undefined;
 
   if (!inferredFileName) {
-    throw new Error('无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
+    throw new Error(
+      '无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+    );
   }
 
   return new File([blob], inferredFileName, { type: blob.type });
 }
 
-async function createFileFromResponse(response: Response, fallbackFileName?: string) {
+async function createFileFromResponse(
+  response: Response,
+  fallbackFileName?: string,
+) {
   if (!response.ok) {
     throw new Error(`文件下载失败：${response.status} ${response.statusText}`);
   }
 
   const blob = await response.blob();
   const fileName =
-    getFileNameFromContentDisposition(response.headers.get('Content-Disposition')) || fallbackFileName;
+    getFileNameFromContentDisposition(
+      response.headers.get('Content-Disposition'),
+    ) || fallbackFileName;
   return createFileFromBlob(blob, fileName);
 }
 
-async function downloadOfficeFile(url: string) {
+async function downloadOfficeFile(url: string, signal?: AbortSignal) {
   const urlFileName = getFileNameFromUrl(url);
-  if (urlFileName && hasFileExtension(urlFileName) && !isSupportedOfficeFileName(urlFileName)) {
-    throw new Error('暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件');
+  if (
+    urlFileName &&
+    hasFileExtension(urlFileName) &&
+    !isSupportedOfficeFileName(urlFileName)
+  ) {
+    throw new Error(
+      '暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+    );
   }
 
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   return createFileFromResponse(response, urlFileName);
 }
 
-async function normalizeOfficeUri(uri: OfficeViewerUri) {
+async function normalizeOfficeUri(uri: OfficeViewerUri, signal?: AbortSignal) {
   const resolvedUri = typeof uri === 'function' ? await uri() : uri;
 
   if (resolvedUri instanceof File) return resolvedUri;
-  if (resolvedUri instanceof Response) return createFileFromResponse(resolvedUri);
+  if (resolvedUri instanceof Response)
+    return createFileFromResponse(resolvedUri);
   if (resolvedUri instanceof Blob) return createFileFromBlob(resolvedUri);
-  if (typeof resolvedUri === 'string') return downloadOfficeFile(resolvedUri);
+  if (typeof resolvedUri === 'string')
+    return downloadOfficeFile(resolvedUri, signal);
 
-  throw new Error('uri 必须是 File、URL 字符串，或返回 File/Blob/URL/Response 的异步函数');
+  throw new Error(
+    'uri 必须是 File、URL 字符串，或返回 File/Blob/URL/Response 的异步函数',
+  );
 }
 
 function OfficeViewerComponent({
@@ -139,7 +187,8 @@ function OfficeViewerComponent({
   const [fileName, setFileName] = useState(defaultFileName);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [previewKind, setPreviewKind] = useState<PreviewKind>(defaultPreviewKind);
+  const [previewKind, setPreviewKind] =
+    useState<PreviewKind>(defaultPreviewKind);
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
   const [xlsxWorkbook, setXlsxWorkbook] = useState<XlsxWorkbook>();
   const [docxDocument, setDocxDocument] = useState<DocxDocument>();
@@ -147,44 +196,81 @@ function OfficeViewerComponent({
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeSheetId, setActiveSheetId] = useState<string>();
   const [zoom, setZoom] = useState(defaultZoom);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const loadGenerationRef = useRef(0);
+  const requestControllerRef = useRef<AbortController>();
+  const defaultZoomRef = useRef(defaultZoom);
+  const onFileParsedRef = useRef(onFileParsed);
+  const onErrorRef = useRef(onError);
+
+  defaultZoomRef.current = defaultZoom;
+  onFileParsedRef.current = onFileParsed;
+  onErrorRef.current = onError;
+
+  const loadFile = useCallback(async (file: File, loadGeneration: number) => {
+    setLoading(true);
+    setError(undefined);
+
+    try {
+      ensureSupportedOfficeFile(file);
+      if (loadGeneration !== loadGenerationRef.current) return;
+
+      // 上传新文件时同步重置所有格式相关状态，防止上一份文档的页码/缩放/工作表残留到新文档。
+      const fileKind = detectPreviewKind(file.name);
+      setPreviewKind(fileKind);
+      setFileName(file.name);
+      setActiveIndex(0);
+      setZoom(defaultZoomRef.current);
+
+      const parsed = await parseOfficeFile(file);
+      if (loadGeneration !== loadGenerationRef.current) return;
+
+      setPptxDocument(parsed.kind === 'pptx' ? parsed.document : undefined);
+      setXlsxWorkbook(parsed.kind === 'xlsx' ? parsed.workbook : undefined);
+      setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
+      setDocDocument(parsed.kind === 'doc' ? parsed.document : undefined);
+      setActiveSheetId(
+        parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined,
+      );
+      onFileParsedRef.current?.(parsed, file);
+    } catch (nextError) {
+      if (loadGeneration !== loadGenerationRef.current) return;
+
+      // 对外回调始终给 Error 实例，组件内部只保存可展示的 message。
+      const normalizedError =
+        nextError instanceof Error ? nextError : new Error('文件解析失败');
+      setError(normalizedError.message);
+      onErrorRef.current?.(normalizedError, file);
+    } finally {
+      if (loadGeneration === loadGenerationRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   const handleSelectFile = useCallback(
     async (file: File) => {
-      setLoading(true);
-      setError(undefined);
-
-      try {
-        ensureSupportedOfficeFile(file);
-        // 上传新文件时同步重置所有格式相关状态，防止上一份文档的页码/缩放/工作表残留到新文档。
-        const fileKind = detectPreviewKind(file.name);
-        setPreviewKind(fileKind);
-        setFileName(file.name);
-        setActiveIndex(0);
-        setZoom(defaultZoom);
-
-        const parsed = await parseOfficeFile(file);
-        setPptxDocument(parsed.kind === 'pptx' ? parsed.document : undefined);
-        setXlsxWorkbook(parsed.kind === 'xlsx' ? parsed.workbook : undefined);
-        setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
-        setDocDocument(parsed.kind === 'doc' ? parsed.document : undefined);
-        setActiveSheetId(parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined);
-        onFileParsed?.(parsed, file);
-      } catch (nextError) {
-        // 对外回调始终给 Error 实例，组件内部只保存可展示的 message。
-        const normalizedError = nextError instanceof Error ? nextError : new Error('文件解析失败');
-        setError(normalizedError.message);
-        onError?.(normalizedError, file);
-      } finally {
-        setLoading(false);
-      }
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = undefined;
+      const loadGeneration = ++loadGenerationRef.current;
+      await loadFile(file, loadGeneration);
     },
-    [defaultZoom, onError, onFileParsed],
+    [loadFile],
   );
 
   useEffect(() => {
     if (!uri) return;
 
-    let ignore = false;
+    // 固化本次 effect 的文件来源，避免异步闭包丢失类型收窄。
+    const uriToLoad = uri;
+    const loadGeneration = ++loadGenerationRef.current;
+    const requestController =
+      typeof AbortController === 'undefined'
+        ? undefined
+        : new AbortController();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = requestController;
 
     async function loadUri() {
       setLoading(true);
@@ -193,24 +279,43 @@ function OfficeViewerComponent({
       let file: File | undefined;
 
       try {
-        file = await normalizeOfficeUri(uri);
-        if (ignore) return;
-        await handleSelectFile(file);
+        file = await normalizeOfficeUri(uriToLoad, requestController?.signal);
+        if (loadGeneration !== loadGenerationRef.current) return;
+        await loadFile(file, loadGeneration);
       } catch (nextError) {
-        if (ignore) return;
-        const normalizedError = nextError instanceof Error ? nextError : new Error('文件加载失败');
+        if (
+          loadGeneration !== loadGenerationRef.current ||
+          requestController?.signal.aborted
+        )
+          return;
+
+        const normalizedError =
+          nextError instanceof Error ? nextError : new Error('文件加载失败');
         setError(normalizedError.message);
-        onError?.(normalizedError, file);
+        onErrorRef.current?.(normalizedError, file);
         setLoading(false);
+      } finally {
+        if (requestControllerRef.current === requestController) {
+          requestControllerRef.current = undefined;
+        }
       }
     }
 
     void loadUri();
 
     return () => {
-      ignore = true;
+      requestController?.abort();
     };
-  }, [handleSelectFile, onError, uri]);
+  }, [loadFile, uri]);
+
+  useEffect(
+    () => () => {
+      // 组件卸载时让所有不可取消的本地解析任务失效，避免异步结果继续写入状态。
+      loadGenerationRef.current += 1;
+      requestControllerRef.current?.abort();
+    },
+    [],
+  );
 
   const hasDocument = useMemo(
     () =>
@@ -218,14 +323,17 @@ function OfficeViewerComponent({
       previewKind === 'pptx'
         ? Boolean(pptxDocument?.slides.length)
         : previewKind === 'xlsx'
-          ? Boolean(xlsxWorkbook?.sheets.length)
-          : previewKind === 'docx'
-            ? Boolean(docxDocument?.blocks.length)
-            : Boolean(docDocument?.paragraphs.length),
+        ? Boolean(xlsxWorkbook?.sheets.length)
+        : previewKind === 'docx'
+        ? Boolean(docxDocument?.blocks.length)
+        : Boolean(docDocument?.paragraphs.length),
     [docDocument, docxDocument, pptxDocument, previewKind, xlsxWorkbook],
   );
 
-  const canGoPreviousSlide = previewKind === 'pptx' && Boolean(pptxDocument?.slides.length) && activeIndex > 0;
+  const canGoPreviousSlide =
+    previewKind === 'pptx' &&
+    Boolean(pptxDocument?.slides.length) &&
+    activeIndex > 0;
   const canGoNextSlide =
     previewKind === 'pptx' &&
     Boolean(pptxDocument?.slides.length) &&
@@ -236,7 +344,9 @@ function OfficeViewerComponent({
   }, []);
 
   const handleNextSlide = useCallback(() => {
-    setActiveIndex((value) => Math.min(value + 1, (pptxDocument?.slides.length ?? 1) - 1));
+    setActiveIndex((value) =>
+      Math.min(value + 1, (pptxDocument?.slides.length ?? 1) - 1),
+    );
   }, [pptxDocument?.slides.length]);
 
   const handleZoomOut = useCallback(() => {
@@ -251,40 +361,89 @@ function OfficeViewerComponent({
     setZoom(defaultZoom);
   }, [defaultZoom]);
 
+  const fullscreenSupported =
+    typeof document !== 'undefined' &&
+    typeof document.documentElement.requestFullscreen === 'function';
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    // 浏览器和 ESC 键都可能改变全屏状态，因此以 fullscreenchange 作为唯一状态来源。
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === viewerRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const handleFullscreen = useCallback(async () => {
+    const viewer = viewerRef.current;
+    if (
+      !viewer ||
+      typeof document === 'undefined' ||
+      typeof viewer.requestFullscreen !== 'function'
+    )
+      return;
+
+    try {
+      if (document.fullscreenElement === viewer) {
+        await document.exitFullscreen();
+      } else {
+        await viewer.requestFullscreen();
+      }
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error ? nextError.message : '浏览器拒绝了全屏请求';
+      onErrorRef.current?.(new Error(`全屏操作失败：${message}`));
+    }
+  }, []);
+
   return (
-    <Layout className={['oxv-office-viewer', className].filter(Boolean).join(' ')} style={style}>
-      <OfficeToolbar
-        fileName={fileName}
-        previewKind={previewKind}
-        zoom={zoom}
-        hasDocument={hasDocument}
-        canGoPreviousSlide={canGoPreviousSlide}
-        canGoNextSlide={canGoNextSlide}
-        onSelectFile={handleSelectFile}
-        onPreviousSlide={handlePreviousSlide}
-        onNextSlide={handleNextSlide}
-        onZoomOut={handleZoomOut}
-        onZoomIn={handleZoomIn}
-        onZoomChange={setZoom}
-        onResetZoom={handleResetZoom}
-      />
-      <Content className="oxv-office-viewer__content">
-        <OfficePreviewStage
-          loading={loading}
-          error={error}
+    <div
+      ref={viewerRef}
+      className={['oxv-office-viewer', className].filter(Boolean).join(' ')}
+      style={style}
+    >
+      <Layout className="oxv-office-viewer__layout">
+        <OfficeToolbar
+          fileName={fileName}
           previewKind={previewKind}
-          pptxDocument={pptxDocument}
-          xlsxWorkbook={xlsxWorkbook}
-          docxDocument={docxDocument}
-          docDocument={docDocument}
-          activeIndex={activeIndex}
-          activeSheetId={activeSheetId}
           zoom={zoom}
-          onSelectSlide={setActiveIndex}
-          onSelectSheet={setActiveSheetId}
+          hasDocument={hasDocument}
+          canGoPreviousSlide={canGoPreviousSlide}
+          canGoNextSlide={canGoNextSlide}
+          onSelectFile={handleSelectFile}
+          onPreviousSlide={handlePreviousSlide}
+          onNextSlide={handleNextSlide}
+          onZoomOut={handleZoomOut}
+          onZoomIn={handleZoomIn}
+          onZoomChange={setZoom}
+          onResetZoom={handleResetZoom}
+          isFullscreen={isFullscreen}
+          fullscreenSupported={fullscreenSupported}
+          onFullscreen={handleFullscreen}
         />
-      </Content>
-    </Layout>
+        <Content className="oxv-office-viewer__content">
+          <OfficePreviewStage
+            loading={loading}
+            error={error}
+            previewKind={previewKind}
+            pptxDocument={pptxDocument}
+            xlsxWorkbook={xlsxWorkbook}
+            docxDocument={docxDocument}
+            docDocument={docDocument}
+            activeIndex={activeIndex}
+            activeSheetId={activeSheetId}
+            zoom={zoom}
+            onSelectSlide={setActiveIndex}
+            onSelectSheet={setActiveSheetId}
+          />
+        </Content>
+      </Layout>
+    </div>
   );
 }
 

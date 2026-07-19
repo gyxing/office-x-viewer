@@ -1,5 +1,5 @@
 import { Typography } from 'antd';
-import { memo, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocxDocument } from '../../services/docx/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
@@ -17,12 +17,21 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
       document
         ? document.pages?.length
           ? document.pages
-          : [{ id: 'docx-page-1', page: document.page, blocks: document.blocks }]
+          : [
+              {
+                id: 'docx-page-1',
+                page: document.page,
+                blocks: document.blocks,
+              },
+            ]
         : [],
     [document],
   );
   const summaryText = useMemo(
-    () => (document ? `${pages.length} pages / ${document.blocks.length} blocks / ${document.images.length} images` : ''),
+    () =>
+      document
+        ? `${pages.length} pages / ${document.blocks.length} blocks / ${document.images.length} images`
+        : '',
     [document, pages.length],
   );
 
@@ -42,11 +51,18 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
       </div>
       <div className="oxv-docx-viewer__scroller">
         {pages.map((pageItem) => {
-          const contentWidth = pageItem.page.width - pageItem.page.marginLeft - pageItem.page.marginRight;
+          const contentWidth =
+            pageItem.page.width -
+            pageItem.page.marginLeft -
+            pageItem.page.marginRight;
           return (
             <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={zoom}>
               {pageItem.blocks.map((block) => (
-                <DocxBlockRenderer key={block.id} block={block} availableWidth={contentWidth} />
+                <DocxBlockRenderer
+                  key={block.id}
+                  block={block}
+                  availableWidth={contentWidth}
+                />
               ))}
             </DocxPageFrame>
           );

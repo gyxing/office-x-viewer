@@ -2,8 +2,12 @@
   "name": "office-x-viewer",
   "version": "0.0.1",
   "description": "A react library developed with dumi",
+  "license": "MIT",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "father build",
     "docs:build": "dumi build",
@@ -11,11 +15,6 @@
     "prepublishOnly": "father doctor && npm run build",
     "start": "dumi dev"
   },
-  "authors": [],
-  "license": "MIT",
-  "files": [
-    "dist"
-  ],
   "commitlint": {
     "extends": [
       "@commitlint/config-conventional"
@@ -38,16 +37,7 @@
       "prettier --parser=typescript --write"
     ]
   },
-  "publishConfig": {
-    "access": "public"
-  },
-  "peerDependencies": {
-    "react": ">=16.9.0",
-    "react-dom": ">=16.9.0"
-  },
   "dependencies": {
-    "@ant-design/icons": "^5.6.0",
-    "antd": "^5.29.3",
     "echarts": "^5.6.0",
     "jszip": "^3.10.1"
   },
@@ -57,6 +47,7 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@umijs/lint": "^4.0.0",
+    "antd": "^5.29.3",
     "dumi": "^2.4.38-beta.1",
     "eslint": "^8.23.0",
     "father": "^4.1.0",
@@ -68,5 +59,14 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "stylelint": "^14.9.1"
-  }
+  },
+  "peerDependencies": {
+    "antd": ">=4.24.0 <7.0.0",
+    "react": ">=16.9.0",
+    "react-dom": ">=16.9.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "authors": []
 }

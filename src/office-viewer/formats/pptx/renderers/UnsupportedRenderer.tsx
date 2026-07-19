@@ -1,5 +1,5 @@
 // UnsupportedRenderer 渲染尚未支持的 PPTX 元素占位，避免元素静默丢失。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { UnsupportedElement } from '../../../services/pptx/types';
 
 type UnsupportedRendererProps = {

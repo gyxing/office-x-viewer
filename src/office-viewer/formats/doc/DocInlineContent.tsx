@@ -1,5 +1,5 @@
 // DocInlineContent 渲染 DOC 段落或表格单元格内的文本和图片片段。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { DocTextInline } from '../../services/doc/types';
 import { inlineStyleToCss } from './docRenderUtils';
 
@@ -9,26 +9,44 @@ type DocInlineContentProps = {
   preserveBlockTypography?: boolean;
 };
 
-function DocInlineContentComponent({ inlines, fallback, preserveBlockTypography }: DocInlineContentProps) {
+function DocInlineContentComponent({
+  inlines,
+  fallback,
+  preserveBlockTypography,
+}: DocInlineContentProps) {
   if (!inlines?.length) return <>{fallback}</>;
 
   return (
     <>
       {inlines.map((inline, index) =>
         inline.type === 'image' ? (
-          <span key={`${inline.image.id}-${index}`} className="oxv-doc-inline-image">
+          <span
+            key={`${inline.image.id}-${index}`}
+            className="oxv-doc-inline-image"
+          >
             <img
               className="oxv-doc-inline-image__img"
               src={inline.image.src}
               alt={inline.image.caption ?? inline.image.id}
               style={{
-                width: inline.image.width && inline.image.width <= 520 ? inline.image.width : undefined,
-                height: inline.image.height && inline.image.width && inline.image.width <= 520 ? inline.image.height : undefined,
+                width:
+                  inline.image.width && inline.image.width <= 520
+                    ? inline.image.width
+                    : undefined,
+                height:
+                  inline.image.height &&
+                  inline.image.width &&
+                  inline.image.width <= 520
+                    ? inline.image.height
+                    : undefined,
               }}
             />
           </span>
         ) : (
-          <span key={`${inline.text}-${index}`} style={inlineStyleToCss(inline.style, { preserveBlockTypography })}>
+          <span
+            key={`${inline.text}-${index}`}
+            style={inlineStyleToCss(inline.style, { preserveBlockTypography })}
+          >
             {inline.text}
           </span>
         ),

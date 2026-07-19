@@ -1,6 +1,6 @@
 // XlsxSheetTable 将工作表行列和单元格模型渲染为带表头的 HTML 表格。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { buildXlsxCellStyle, isHighlightedXlsxCell } from './sheetRenderUtils';
 
@@ -33,7 +33,13 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
       <colgroup>
         <col className="oxv-xlsx-sheet-table__row-header-col" />
         {sheet.columns.map((column) => (
-          <col key={column.index} style={{ width: column.width, display: column.hidden ? 'none' : undefined }} />
+          <col
+            key={column.index}
+            style={{
+              width: column.width,
+              display: column.hidden ? 'none' : undefined,
+            }}
+          />
         ))}
       </colgroup>
       <thead>
@@ -58,7 +64,9 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
               if (cell.hiddenByMerge) return null;
               const style = cell.style ?? {};
               const fallbackBorder = style.border
-                ? `${style.borderWidth ?? 1}px solid ${style.borderColor ?? '#b9c2d0'}`
+                ? `${style.borderWidth ?? 1}px solid ${
+                    style.borderColor ?? '#b9c2d0'
+                  }`
                 : '1px solid #d9e0ea';
               return (
                 <td

@@ -1,5 +1,5 @@
 // TableRenderer 渲染 PPTX 表格元素，包括单元格填充、边框和文字样式。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { TableElement } from '../../../services/pptx/types';
 
 type TableRendererProps = {
@@ -49,54 +49,83 @@ function TableRendererComponent({ element }: TableRendererProps) {
                 key={cellIndex}
                 style={{
                   width: columnWidths[cellIndex],
-                  background: colorWithOpacity(cell.backgroundColor ?? undefined, cell.backgroundOpacity),
+                  background: colorWithOpacity(
+                    cell.backgroundColor ?? undefined,
+                    cell.backgroundOpacity,
+                  ),
                   borderStyle: cell.borderColor ? 'solid' : 'none',
-                  borderColor: colorWithOpacity(cell.borderColor ?? undefined, cell.borderOpacity) ?? 'transparent',
+                  borderColor:
+                    colorWithOpacity(
+                      cell.borderColor ?? undefined,
+                      cell.borderOpacity,
+                    ) ?? 'transparent',
                   borderWidth: cell.borderWidth ?? 1,
-                  padding: `${cell.margins?.top ?? 0}px ${cell.margins?.right ?? 0}px ${cell.margins?.bottom ?? 0}px ${cell.margins?.left ?? 0}px`,
+                  padding: `${cell.margins?.top ?? 0}px ${
+                    cell.margins?.right ?? 0
+                  }px ${cell.margins?.bottom ?? 0}px ${
+                    cell.margins?.left ?? 0
+                  }px`,
                   verticalAlign: cell.verticalAlign ?? 'middle',
                   overflow: 'hidden',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}
               >
-                {cell.paragraphs?.length ? (
-                  cell.paragraphs.map((paragraph, paragraphIndex) => (
-                    <div
-                      key={paragraphIndex}
-                      style={{
-                        textAlign: paragraph.style?.align ?? cell.style?.align ?? 'left',
-                        lineHeight: paragraph.style?.lineHeight ?? cell.style?.lineHeight ?? 1.2,
-                        whiteSpace: 'inherit',
-                      }}
-                    >
-                      {paragraph.runs.map((run, runIndex) => (
-                        <span
-                          key={runIndex}
-                          style={{
-                            color: run.style?.color ?? cell.style?.color,
-                            fontFamily: run.style?.fontFamily ?? cell.style?.fontFamily,
-                            fontSize: run.style?.fontSize ?? cell.style?.fontSize,
-                            fontWeight: run.style?.bold || cell.style?.bold ? 600 : 400,
-                            fontStyle: run.style?.italic || cell.style?.italic ? 'italic' : 'normal',
-                            textDecoration:
-                              [
-                                run.style?.underline || cell.style?.underline ? 'underline' : '',
-                                run.style?.strike && run.style.strike !== 'none' ? 'line-through' : '',
-                              ]
-                                .filter(Boolean)
-                                .join(' ') || 'none',
-                            letterSpacing: run.style?.charSpace ?? cell.style?.charSpace ?? 0,
-                          }}
-                        >
-                          {run.text}
-                        </span>
-                      ))}
-                    </div>
-                  ))
-                ) : (
-                  cell.text
-                )}
+                {cell.paragraphs?.length
+                  ? cell.paragraphs.map((paragraph, paragraphIndex) => (
+                      <div
+                        key={paragraphIndex}
+                        style={{
+                          textAlign:
+                            paragraph.style?.align ??
+                            cell.style?.align ??
+                            'left',
+                          lineHeight:
+                            paragraph.style?.lineHeight ??
+                            cell.style?.lineHeight ??
+                            1.2,
+                          whiteSpace: 'inherit',
+                        }}
+                      >
+                        {paragraph.runs.map((run, runIndex) => (
+                          <span
+                            key={runIndex}
+                            style={{
+                              color: run.style?.color ?? cell.style?.color,
+                              fontFamily:
+                                run.style?.fontFamily ?? cell.style?.fontFamily,
+                              fontSize:
+                                run.style?.fontSize ?? cell.style?.fontSize,
+                              fontWeight:
+                                run.style?.bold || cell.style?.bold ? 600 : 400,
+                              fontStyle:
+                                run.style?.italic || cell.style?.italic
+                                  ? 'italic'
+                                  : 'normal',
+                              textDecoration:
+                                [
+                                  run.style?.underline || cell.style?.underline
+                                    ? 'underline'
+                                    : '',
+                                  run.style?.strike &&
+                                  run.style.strike !== 'none'
+                                    ? 'line-through'
+                                    : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ') || 'none',
+                              letterSpacing:
+                                run.style?.charSpace ??
+                                cell.style?.charSpace ??
+                                0,
+                            }}
+                          >
+                            {run.text}
+                          </span>
+                        ))}
+                      </div>
+                    ))
+                  : cell.text}
               </td>
             ))}
           </tr>

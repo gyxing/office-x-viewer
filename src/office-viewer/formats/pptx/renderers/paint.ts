@@ -12,26 +12,35 @@ export function colorWithOpacity(color?: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-export function isGradientPaint(paint?: string | GradientFill | null): paint is GradientFill {
+export function isGradientPaint(
+  paint?: string | GradientFill | null,
+): paint is GradientFill {
   return Boolean(paint && typeof paint === 'object' && paint.type === 'linear');
 }
 
 function normalizeCssAngle(angle: number) {
-  return ((angle + 90) % 360 + 360) % 360;
+  return (((angle + 90) % 360) + 360) % 360;
 }
 
 function formatOffset(offset: number) {
-  return `${Math.max(0, Math.min(100, offset * 100)).toFixed(1).replace(/\.0$/, '')}%`;
+  return `${Math.max(0, Math.min(100, offset * 100))
+    .toFixed(1)
+    .replace(/\.0$/, '')}%`;
 }
 
-export function paintToCss(paint?: string | GradientFill | null, opacity?: number) {
+export function paintToCss(
+  paint?: string | GradientFill | null,
+  opacity?: number,
+) {
   if (!paint) return undefined;
   if (!isGradientPaint(paint)) return colorWithOpacity(paint, opacity);
   const stops = paint.stops
     .slice()
     .sort((a, b) => a.offset - b.offset)
     .map((stop) => `${stop.color} ${formatOffset(stop.offset)}`);
-  return `linear-gradient(${normalizeCssAngle(paint.angle)}deg, ${stops.join(', ')})`;
+  return `linear-gradient(${normalizeCssAngle(paint.angle)}deg, ${stops.join(
+    ', ',
+  )})`;
 }
 
 export function gradientToSvgEndpoints(angle: number) {

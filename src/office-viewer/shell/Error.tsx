@@ -1,6 +1,6 @@
 // OfficeError 展示文件解析或预览过程中的错误信息。
-import { Alert } from 'antd';
-import { memo } from 'react';
+import React, { memo } from 'react';
+import { OfficeNotice } from './Notice';
 
 type OfficeErrorProps = {
   message: string;
@@ -9,7 +9,7 @@ type OfficeErrorProps = {
 function OfficeErrorComponent({ message }: OfficeErrorProps) {
   return (
     <div className="oxv-office-error">
-      <Alert type="error" showIcon message="预览失败" description={message} />
+      <OfficeNotice type="error" title="预览失败" description={message} />
     </div>
   );
 }

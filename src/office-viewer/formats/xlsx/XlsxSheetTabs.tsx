@@ -1,6 +1,6 @@
 // XlsxSheetTabs 渲染工作表标签栏，并展示当前工作表范围或行列数量。
 import { Tabs, Typography } from 'antd';
-import { memo, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { XlsxSheet, XlsxWorkbook } from '../../services/xlsx/types';
 
 type XlsxSheetTabsProps = {
@@ -11,7 +11,11 @@ type XlsxSheetTabsProps = {
 
 const EMPTY_TABS: Array<{ key: string; label: string }> = [];
 
-function XlsxSheetTabsComponent({ workbook, activeSheet, onSelectSheet }: XlsxSheetTabsProps) {
+function XlsxSheetTabsComponent({
+  workbook,
+  activeSheet,
+  onSelectSheet,
+}: XlsxSheetTabsProps) {
   const tabItems = useMemo(
     () =>
       workbook?.sheets.map((sheet) => ({
@@ -20,7 +24,9 @@ function XlsxSheetTabsComponent({ workbook, activeSheet, onSelectSheet }: XlsxSh
       })) ?? EMPTY_TABS,
     [workbook],
   );
-  const rangeText = activeSheet.range ?? `${activeSheet.rowCount} 行 x ${activeSheet.columnCount} 列`;
+  const rangeText =
+    activeSheet.range ??
+    `${activeSheet.rowCount} 行 x ${activeSheet.columnCount} 列`;
 
   return (
     <div className="oxv-xlsx-sheet-tabs">
@@ -29,7 +35,10 @@ function XlsxSheetTabsComponent({ workbook, activeSheet, onSelectSheet }: XlsxSh
         onChange={onSelectSheet}
         items={tabItems}
         tabBarExtraContent={
-          <Typography.Text type="secondary" className="oxv-xlsx-sheet-tabs__range">
+          <Typography.Text
+            type="secondary"
+            className="oxv-xlsx-sheet-tabs__range"
+          >
             {rangeText}
           </Typography.Text>
         }

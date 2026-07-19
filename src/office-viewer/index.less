@@ -1,5 +1,18 @@
 .oxv-office-viewer {
+  --oxv-notice-text: #1f2937;
+  --oxv-notice-error-color: #cf1322;
+  --oxv-notice-error-bg: #fff2f0;
+  --oxv-notice-error-border: #ffccc7;
+  --oxv-notice-warning-color: #d46b08;
+  --oxv-notice-warning-bg: #fffbe6;
+  --oxv-notice-warning-border: #ffe58f;
+
   min-height: 100vh;
+  background: #eef1f6;
+}
+
+.oxv-office-viewer__layout {
+  min-height: inherit;
   background: #eef1f6;
 }
 
@@ -44,4 +57,56 @@
 
 .oxv-office-error {
   padding: 24px;
+}
+
+.oxv-office-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  color: var(--oxv-notice-text);
+  border: 1px solid;
+  border-radius: 6px;
+}
+
+.oxv-office-notice--error {
+  background: var(--oxv-notice-error-bg);
+  border-color: var(--oxv-notice-error-border);
+
+  .oxv-office-notice__icon {
+    background: var(--oxv-notice-error-color);
+  }
+}
+
+.oxv-office-notice--warning {
+  background: var(--oxv-notice-warning-bg);
+  border-color: var(--oxv-notice-warning-border);
+
+  .oxv-office-notice__icon {
+    background: var(--oxv-notice-warning-color);
+  }
+}
+
+.oxv-office-notice__icon {
+  display: grid;
+  flex: 0 0 22px;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.oxv-office-notice__content {
+  min-width: 0;
+}
+
+.oxv-office-notice__title {
+  font-weight: 600;
+}
+
+.oxv-office-notice__description {
+  margin-top: 4px;
+  line-height: 1.6;
 }

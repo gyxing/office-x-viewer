@@ -1,7 +1,12 @@
 // TextRenderer 渲染 PPTX 文本框，并处理文本框形状、渐变填充、段落和 run 样式。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { TextElement } from '../../../services/pptx/types';
-import { colorWithOpacity, gradientToSvgEndpoints, isGradientPaint, paintToCss } from './paint';
+import {
+  colorWithOpacity,
+  gradientToSvgEndpoints,
+  isGradientPaint,
+  paintToCss,
+} from './paint';
 import { buildRendererId } from './renderIds';
 
 type TextRendererProps = {
@@ -11,7 +16,12 @@ type TextRendererProps = {
 
 function shadowToCss(element: TextElement) {
   if (!element.shadow) return undefined;
-  return `${element.shadow.offsetX ?? 0}px ${element.shadow.offsetY ?? 0}px ${Math.max(0, element.shadow.blur ?? 0)}px ${colorWithOpacity(element.shadow.color ?? '#000000', element.shadow.opacity ?? 0.18)}`;
+  return `${element.shadow.offsetX ?? 0}px ${
+    element.shadow.offsetY ?? 0
+  }px ${Math.max(0, element.shadow.blur ?? 0)}px ${colorWithOpacity(
+    element.shadow.color ?? '#000000',
+    element.shadow.opacity ?? 0.18,
+  )}`;
 }
 
 function radiusToPx(element: TextElement) {
@@ -40,7 +50,9 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
   // 同一页可能在缩略图和主视口同时出现，SVG defs id 需要带 renderKey 防止互相引用错。
-  const gradientId = isGradientFill ? buildRendererId(renderKey, element.id, 'fill-gradient') : undefined;
+  const gradientId = isGradientFill
+    ? buildRendererId(renderKey, element.id, 'fill-gradient')
+    : undefined;
 
   return (
     <div
@@ -61,17 +73,27 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         writingMode: style.writingMode,
         whiteSpace: 'pre-wrap',
         lineHeight: style.lineHeight ?? 1.15,
-        background: isVectorShape ? undefined : paintToCss(element.fill, element.fillOpacity),
-        border: !isVectorShape && element.stroke
-          ? `${element.strokeWidth ?? 1}px ${lineStyle(element.strokeDash)} ${colorWithOpacity(element.stroke, element.strokeOpacity)}`
-          : undefined,
+        background: isVectorShape
+          ? undefined
+          : paintToCss(element.fill, element.fillOpacity),
+        border:
+          !isVectorShape && element.stroke
+            ? `${element.strokeWidth ?? 1}px ${lineStyle(
+                element.strokeDash,
+              )} ${colorWithOpacity(element.stroke, element.strokeOpacity)}`
+            : undefined,
         borderRadius: radiusToPx(element),
         boxShadow: shadowToCss(element),
         boxSizing: 'border-box',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: style.verticalAlign === 'bottom' ? 'flex-end' : style.verticalAlign === 'middle' ? 'center' : 'flex-start',
+        justifyContent:
+          style.verticalAlign === 'bottom'
+            ? 'flex-end'
+            : style.verticalAlign === 'middle'
+            ? 'center'
+            : 'flex-start',
         paddingLeft: style.marginLeft ?? 0,
         paddingRight: style.marginRight ?? 0,
         paddingTop: style.marginTop ?? 0,
@@ -83,7 +105,10 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
     >
       {isVectorShape ? (
         <svg
-          viewBox={element.viewBox ?? `0 0 ${Math.max(1, element.width)} ${Math.max(1, element.height)}`}
+          viewBox={
+            element.viewBox ??
+            `0 0 ${Math.max(1, element.width)} ${Math.max(1, element.height)}`
+          }
           preserveAspectRatio="none"
           style={{
             position: 'absolute',
@@ -97,21 +122,47 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         >
           {isGradientFill ? (
             <defs>
-              <linearGradient id={gradientId} {...gradientToSvgEndpoints(fillPaint.angle)} gradientUnits="objectBoundingBox">
+              <linearGradient
+                id={gradientId}
+                {...gradientToSvgEndpoints(fillPaint.angle)}
+                gradientUnits="objectBoundingBox"
+              >
                 {fillPaint.stops.map((stop, index) => (
-                  <stop key={index} offset={`${stop.offset * 100}%`} stopColor={stop.color} />
+                  <stop
+                    key={index}
+                    offset={`${stop.offset * 100}%`}
+                    stopColor={stop.color}
+                  />
                 ))}
               </linearGradient>
             </defs>
           ) : null}
           <path
             d={element.path ?? ''}
-            fill={isGradientFill ? `url(#${gradientId})` : element.fill ? colorWithOpacity(element.fill as string, element.fillOpacity) ?? 'none' : 'none'}
+            fill={
+              isGradientFill
+                ? `url(#${gradientId})`
+                : element.fill
+                ? colorWithOpacity(
+                    element.fill as string,
+                    element.fillOpacity,
+                  ) ?? 'none'
+                : 'none'
+            }
             fillOpacity={isGradientFill ? undefined : element.fillOpacity}
-            stroke={element.stroke ? colorWithOpacity(element.stroke, element.strokeOpacity) ?? element.stroke : 'none'}
+            stroke={
+              element.stroke
+                ? colorWithOpacity(element.stroke, element.strokeOpacity) ??
+                  element.stroke
+                : 'none'
+            }
             strokeOpacity={element.strokeOpacity}
             strokeWidth={element.strokeWidth ?? 1}
-            strokeDasharray={element.strokeDash && element.strokeDash !== 'solid' ? element.strokeDash : undefined}
+            strokeDasharray={
+              element.strokeDash && element.strokeDash !== 'solid'
+                ? element.strokeDash
+                : undefined
+            }
             vectorEffect="non-scaling-stroke"
           />
         </svg>
@@ -126,8 +177,13 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
             lineHeight: paragraph.style?.lineHeight ?? style.lineHeight ?? 1.2,
             marginTop: paragraph.style?.spaceBefore ?? 0,
             marginBottom: paragraph.style?.spaceAfter ?? 0,
-            paddingLeft: `${(paragraph.style?.marginLeft ?? 0) + (paragraph.bullet && !paragraph.bullet.none ? 18 : 0)}px`,
-            textIndent: paragraph.style?.textIndent ? `${paragraph.style.textIndent}px` : undefined,
+            paddingLeft: `${
+              (paragraph.style?.marginLeft ?? 0) +
+              (paragraph.bullet && !paragraph.bullet.none ? 18 : 0)
+            }px`,
+            textIndent: paragraph.style?.textIndent
+              ? `${paragraph.style.textIndent}px`
+              : undefined,
             display: 'block',
             whiteSpace: 'inherit',
           }}
@@ -136,7 +192,10 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
             <span
               style={{
                 display: 'inline-block',
-                color: colorWithOpacity(paragraph.bullet.color ?? style.color, style.opacity),
+                color: colorWithOpacity(
+                  paragraph.bullet.color ?? style.color,
+                  style.opacity,
+                ),
                 fontSize: paragraph.bullet.size ?? style.fontSize,
                 marginRight: 6,
                 width: 12,
@@ -152,25 +211,36 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
               <span
                 key={runIndex}
                 style={{
-                  color: colorWithOpacity(runStyle.color ?? style.color ?? '#172033', runStyle.opacity ?? style.opacity),
+                  color: colorWithOpacity(
+                    runStyle.color ?? style.color ?? '#172033',
+                    runStyle.opacity ?? style.opacity,
+                  ),
                   fontFamily: runStyle.fontFamily ?? style.fontFamily,
                   fontSize: runStyle.fontSize ?? style.fontSize,
                   fontWeight: runStyle.bold || style.bold ? 600 : 400,
-                  fontStyle: runStyle.italic || style.italic ? 'italic' : 'normal',
-                  textDecoration: [
-                    runStyle.underline || style.underline ? 'underline' : '',
-                    runStyle.strike && runStyle.strike !== 'none' ? 'line-through' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || 'none',
-                  textTransform: runStyle.allCaps || style.allCaps ? 'uppercase' : undefined,
-                  fontVariant: runStyle.smallCaps || style.smallCaps ? 'small-caps' : undefined,
+                  fontStyle:
+                    runStyle.italic || style.italic ? 'italic' : 'normal',
+                  textDecoration:
+                    [
+                      runStyle.underline || style.underline ? 'underline' : '',
+                      runStyle.strike && runStyle.strike !== 'none'
+                        ? 'line-through'
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || 'none',
+                  textTransform:
+                    runStyle.allCaps || style.allCaps ? 'uppercase' : undefined,
+                  fontVariant:
+                    runStyle.smallCaps || style.smallCaps
+                      ? 'small-caps'
+                      : undefined,
                   verticalAlign:
                     runStyle.baseline && runStyle.baseline > 0
                       ? 'super'
                       : runStyle.baseline && runStyle.baseline < 0
-                        ? 'sub'
-                        : undefined,
+                      ? 'sub'
+                      : undefined,
                   letterSpacing: 0,
                 }}
               >

@@ -1,5 +1,14 @@
 import type { OfficeEntryMap } from '../../shared/ooxml/archive';
 import { loadOfficeEntries, readXml } from '../../shared/ooxml/archive';
+import { parseOfficeChartXml } from '../../shared/ooxml/charts';
+import {
+  collectMedia,
+  resolvePackageMediaRef,
+  type OfficeRelationship,
+} from '../../shared/ooxml/media';
+import { readRelationships } from '../../shared/ooxml/relationships';
+import { emuToPx } from '../../shared/ooxml/units';
+import { parseWpsWebExtensionChartModel } from '../../shared/ooxml/wpsChart';
 import {
   attr,
   childByLocalName,
@@ -10,29 +19,31 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
-import { emuToPx } from '../../shared/ooxml/units';
-import { alphaToOpacity, alphaToRatio, resolveThemeColor, toHexColor, transformColor } from './colors';
-import { collectMedia, resolvePackageMediaRef, type OfficeRelationship } from '../../shared/ooxml/media';
-import { readRelationships } from '../../shared/ooxml/relationships';
-import { decodeMojibake, parseOfficeChartXml } from '../../shared/ooxml/charts';
+import {
+  alphaToOpacity,
+  alphaToRatio,
+  resolveThemeColor,
+  toHexColor,
+  transformColor,
+} from './colors';
 import type {
   ChartElement,
   GradientFill,
   ImageCrop,
   ImageElement,
   PptxDocument,
+  ShadowStyle,
   ShapeElement,
+  SlideBackground,
   SlideElement,
   SlideModel,
-  SlideBackground,
   TableCell,
   TableElement,
-  ThemeModel,
   TextElement,
   TextParagraph,
   TextRun,
   TextStyle,
-  ShadowStyle,
+  ThemeModel,
   UnsupportedElement,
 } from './types';
 
@@ -128,7 +139,12 @@ function buildPackageState(entries: OfficeEntryMap): PackageState {
 
   const media = collectMedia(entries, 'ppt/media/');
 
-  return { entries, relationships, mediaByName: media.byName, mediaByPath: media.byPath };
+  return {
+    entries,
+    relationships,
+    mediaByName: media.byName,
+    mediaByPath: media.byPath,
+  };
 }
 
 export function debugPptxPackage(entries: OfficeEntryMap) {
@@ -138,7 +154,11 @@ export function debugPptxPackage(entries: OfficeEntryMap) {
     mediaCount: Object.keys(packageState.mediaByPath).length,
     mediaSample: Object.entries(packageState.mediaByPath)
       .slice(0, 5)
-      .map(([path, src]) => ({ path, hasSrc: Boolean(src), prefix: src.slice(0, 30) })),
+      .map(([path, src]) => ({
+        path,
+        hasSrc: Boolean(src),
+        prefix: src.slice(0, 30),
+      })),
   };
 }
 
@@ -186,9 +206,10 @@ function readTheme(xml: string): ThemeModel {
       const child = node.firstElementChild;
       if (!child) return;
       const childName = child.localName.split(':').pop()?.toLowerCase();
-      const value = childName === 'sysclr'
-        ? attr(child, 'lastClr') ?? attr(child, 'val')
-        : attr(child, 'val') ?? attr(child, 'lastClr');
+      const value =
+        childName === 'sysclr'
+          ? attr(child, 'lastClr') ?? attr(child, 'val')
+          : attr(child, 'val') ?? attr(child, 'lastClr');
       if (value) colorScheme[node.localName] = value;
     });
 
@@ -199,7 +220,11 @@ function readTheme(xml: string): ThemeModel {
     const latin = childByLocalName(node, 'latin');
     const ea = childByLocalName(node, 'ea');
     const cs = childByLocalName(node, 'cs');
-    fontScheme[bucket] = [attr(latin, 'typeface'), attr(ea, 'typeface'), attr(cs, 'typeface')]
+    fontScheme[bucket] = [
+      attr(latin, 'typeface'),
+      attr(ea, 'typeface'),
+      attr(cs, 'typeface'),
+    ]
       .filter(Boolean)
       .join(', ');
   });
@@ -248,7 +273,10 @@ function mergeTextStyles(...styles: Array<TextStyle | undefined>) {
   }, {});
 }
 
-function mergePlaceholderStyle(base?: PlaceholderStyle, override?: PlaceholderStyle): PlaceholderStyle {
+function mergePlaceholderStyle(
+  base?: PlaceholderStyle,
+  override?: PlaceholderStyle,
+): PlaceholderStyle {
   if (!base && !override) return {};
   if (!base) return { ...override };
   if (!override) return { ...base };
@@ -256,11 +284,21 @@ function mergePlaceholderStyle(base?: PlaceholderStyle, override?: PlaceholderSt
     ...base,
     ...override,
     fill: override.fill !== undefined ? override.fill : base.fill,
-    fillOpacity: override.fillOpacity !== undefined ? override.fillOpacity : base.fillOpacity,
+    fillOpacity:
+      override.fillOpacity !== undefined
+        ? override.fillOpacity
+        : base.fillOpacity,
     stroke: override.stroke !== undefined ? override.stroke : base.stroke,
-    strokeOpacity: override.strokeOpacity !== undefined ? override.strokeOpacity : base.strokeOpacity,
-    strokeWidth: override.strokeWidth !== undefined ? override.strokeWidth : base.strokeWidth,
-    strokeDash: override.strokeDash !== undefined ? override.strokeDash : base.strokeDash,
+    strokeOpacity:
+      override.strokeOpacity !== undefined
+        ? override.strokeOpacity
+        : base.strokeOpacity,
+    strokeWidth:
+      override.strokeWidth !== undefined
+        ? override.strokeWidth
+        : base.strokeWidth,
+    strokeDash:
+      override.strokeDash !== undefined ? override.strokeDash : base.strokeDash,
     shadow: override.shadow ?? base.shadow,
     text: mergeTextStyles(base.text, override.text),
     body: mergeTextStyles(base.body, override.body),
@@ -271,49 +309,52 @@ function mergePlaceholderStyle(base?: PlaceholderStyle, override?: PlaceholderSt
   };
 }
 
-function mergePlaceholderMap(
-  base: Record<string, PlaceholderStyle>,
-  override: Record<string, PlaceholderStyle>,
-) {
-  const result = { ...base };
-  Object.entries(override).forEach(([key, value]) => {
-    result[key] = mergePlaceholderStyle(result[key], value);
-  });
-  return result;
-}
-
 function readBodyPrStyle(bodyPr: Element | null): TextStyle {
   return {
     verticalAlign:
       attr(bodyPr, 'anchor') === 'ctr'
         ? 'middle'
         : attr(bodyPr, 'anchor') === 'b'
-          ? 'bottom'
-          : 'top',
+        ? 'bottom'
+        : 'top',
     writingMode:
       attr(bodyPr, 'vert') === 'vert'
         ? 'vertical-rl'
         : attr(bodyPr, 'vert') === 'vert270'
-          ? 'vertical-lr'
-          : 'horizontal-tb',
+        ? 'vertical-lr'
+        : 'horizontal-tb',
     fit: childByLocalName(bodyPr, 'spAutoFit')
       ? 'resizeShape'
       : childByLocalName(bodyPr, 'normAutofit')
-        ? 'shrinkText'
-        : childByLocalName(bodyPr, 'noAutofit')
-          ? 'none'
-          : undefined,
-    marginLeft: attr(bodyPr, 'lIns') ? emuToPx(Number(attr(bodyPr, 'lIns'))) : undefined,
-    marginRight: attr(bodyPr, 'rIns') ? emuToPx(Number(attr(bodyPr, 'rIns'))) : undefined,
-    marginTop: attr(bodyPr, 'tIns') ? emuToPx(Number(attr(bodyPr, 'tIns'))) : undefined,
-    marginBottom: attr(bodyPr, 'bIns') ? emuToPx(Number(attr(bodyPr, 'bIns'))) : undefined,
+      ? 'shrinkText'
+      : childByLocalName(bodyPr, 'noAutofit')
+      ? 'none'
+      : undefined,
+    marginLeft: attr(bodyPr, 'lIns')
+      ? emuToPx(Number(attr(bodyPr, 'lIns')))
+      : undefined,
+    marginRight: attr(bodyPr, 'rIns')
+      ? emuToPx(Number(attr(bodyPr, 'rIns')))
+      : undefined,
+    marginTop: attr(bodyPr, 'tIns')
+      ? emuToPx(Number(attr(bodyPr, 'tIns')))
+      : undefined,
+    marginBottom: attr(bodyPr, 'bIns')
+      ? emuToPx(Number(attr(bodyPr, 'bIns')))
+      : undefined,
   };
 }
 
-function readDefaultRunStyle(node: Element | null, theme: ThemeModel): TextStyle {
+function readDefaultRunStyle(
+  node: Element | null,
+  theme: ThemeModel,
+): TextStyle {
   if (!node) return {};
   const solidFill = childByLocalName(node, 'solidFill');
-  const fontNode = childByLocalName(node, 'latin') ?? childByLocalName(node, 'ea') ?? childByLocalName(node, 'cs');
+  const fontNode =
+    childByLocalName(node, 'latin') ??
+    childByLocalName(node, 'ea') ??
+    childByLocalName(node, 'cs');
   return {
     fontFamily: attr(fontNode, 'typeface'),
     fontSize: attr(node, 'sz') ? Number(attr(node, 'sz')) / 100 : undefined,
@@ -324,33 +365,43 @@ function readDefaultRunStyle(node: Element | null, theme: ThemeModel): TextStyle
       attr(node, 'strike') === 'dblStrike'
         ? 'dblStrike'
         : attr(node, 'strike') === 'sngStrike'
-          ? 'sngStrike'
-          : attr(node, 'strike') === 'none'
-            ? 'none'
-            : undefined,
+        ? 'sngStrike'
+        : attr(node, 'strike') === 'none'
+        ? 'none'
+        : undefined,
     smallCaps: boolAttr(node, 'smCap'),
     allCaps: boolAttr(node, 'cap'),
     color: parseColorNode(solidFill, theme),
     opacity: parseAlphaNode(solidFill),
     charSpace: attr(node, 'spc') ? Number(attr(node, 'spc')) / 100 : undefined,
-    baseline: attr(node, 'baseline') ? Number(attr(node, 'baseline')) / 1000 : undefined,
+    baseline: attr(node, 'baseline')
+      ? Number(attr(node, 'baseline')) / 1000
+      : undefined,
   };
 }
 
-function readParagraphLevelStyle(node: Element | null, theme: ThemeModel): TextStyle {
+function readParagraphLevelStyle(
+  node: Element | null,
+  theme: ThemeModel,
+): TextStyle {
   if (!node) return {};
   const solidFill = childByLocalName(node, 'solidFill');
   const bulletChar = attr(childByLocalName(node, 'buChar'), 'char');
   const bulletSize = pointToPx(attr(childByLocalName(node, 'buSzPts'), 'val'));
   const bulletColorNode = childByLocalName(node, 'buClr');
-  const bulletColor = parseColorNode(childByLocalName(bulletColorNode, 'solidFill') ?? bulletColorNode, theme);
+  const bulletColor = parseColorNode(
+    childByLocalName(bulletColorNode, 'solidFill') ?? bulletColorNode,
+    theme,
+  );
   const bulletNone = Boolean(childByLocalName(node, 'buNone'));
   const lineSpace = childByLocalName(node, 'lnSpc');
   const spcPct = childByLocalName(lineSpace, 'spcPct');
   const spcPts = childByLocalName(lineSpace, 'spcPts');
   const spcBef = childByLocalName(node, 'spcBef');
   const spcAft = childByLocalName(node, 'spcAft');
-  const spaceBefore = pointToPx(attr(childByLocalName(spcBef, 'spcPts'), 'val'));
+  const spaceBefore = pointToPx(
+    attr(childByLocalName(spcBef, 'spcPts'), 'val'),
+  );
   const spaceAfter = pointToPx(attr(childByLocalName(spcAft, 'spcPts'), 'val'));
 
   return {
@@ -358,24 +409,30 @@ function readParagraphLevelStyle(node: Element | null, theme: ThemeModel): TextS
       attr(node, 'algn') === 'ctr'
         ? 'center'
         : attr(node, 'algn') === 'r'
-          ? 'right'
-          : attr(node, 'algn') === 'just'
-            ? 'justify'
-            : undefined,
-    lineHeight: pctToRatio(attr(spcPct, 'val')) ?? pointToPx(attr(spcPts, 'val')),
-    marginLeft: attr(node, 'marL') ? emuToPx(Number(attr(node, 'marL'))) : undefined,
-    textIndent: attr(node, 'indent') ? emuToPx(Number(attr(node, 'indent'))) : undefined,
+        ? 'right'
+        : attr(node, 'algn') === 'just'
+        ? 'justify'
+        : undefined,
+    lineHeight:
+      pctToRatio(attr(spcPct, 'val')) ?? pointToPx(attr(spcPts, 'val')),
+    marginLeft: attr(node, 'marL')
+      ? emuToPx(Number(attr(node, 'marL')))
+      : undefined,
+    textIndent: attr(node, 'indent')
+      ? emuToPx(Number(attr(node, 'indent')))
+      : undefined,
     spaceBefore,
     spaceAfter,
     color: parseColorNode(solidFill, theme),
-    bullet: bulletChar || bulletNone
-      ? {
-          char: bulletChar,
-          color: bulletColor,
-          size: bulletSize,
-          none: bulletNone,
-        }
-      : undefined,
+    bullet:
+      bulletChar || bulletNone
+        ? {
+            char: bulletChar,
+            color: bulletColor,
+            size: bulletSize,
+            none: bulletNone,
+          }
+        : undefined,
   };
 }
 
@@ -393,11 +450,17 @@ function readLevelStyles(txBody: Element | null, theme: ThemeModel) {
   return levels;
 }
 
-function readTextStyleFamily(styleNode: Element | null, theme: ThemeModel): PlaceholderStyle {
+function readTextStyleFamily(
+  styleNode: Element | null,
+  theme: ThemeModel,
+): PlaceholderStyle {
   if (!styleNode) return {};
   const defaultParagraph = childByLocalName(styleNode, 'defPPr');
   const defaultRun = childByLocalName(defaultParagraph, 'defRPr');
-  const body = mergeTextStyles(readParagraphLevelStyle(defaultParagraph, theme), readBodyPrStyle(null));
+  const body = mergeTextStyles(
+    readParagraphLevelStyle(defaultParagraph, theme),
+    readBodyPrStyle(null),
+  );
   const text = mergeTextStyles(body, readDefaultRunStyle(defaultRun, theme));
   const levels: Record<number, TextStyle> = {};
 
@@ -436,7 +499,10 @@ function readTextPresetMap(txStyles: Element | null, theme: ThemeModel) {
   return presets;
 }
 
-function readTableCellStyle(node: Element | null | undefined, theme: ThemeModel): TableCellStyle {
+function readTableCellStyle(
+  node: Element | null | undefined,
+  theme: ThemeModel,
+): TableCellStyle {
   if (!node) return {};
   const tcStyle = childByLocalName(node, 'tcStyle') ?? node;
   const tcTxStyle = childByLocalName(node, 'tcTxStyle') ?? node;
@@ -452,7 +518,8 @@ function readTableCellStyle(node: Element | null | undefined, theme: ThemeModel)
     childByLocalName(borderNode, 'bottom')?.firstElementChild ??
     childByLocalName(borderNode, 'insideH')?.firstElementChild ??
     childByLocalName(borderNode, 'insideV')?.firstElementChild;
-  const fill = noFill || !solidFill ? undefined : parseColorNode(solidFill, theme);
+  const fill =
+    noFill || !solidFill ? undefined : parseColorNode(solidFill, theme);
   const borderFill = childByLocalName(borderLine, 'solidFill');
   const textColorNode =
     childByLocalName(tcTxStyle, 'solidFill') ??
@@ -466,9 +533,13 @@ function readTableCellStyle(node: Element | null | undefined, theme: ThemeModel)
     }),
     backgroundColor: fill,
     backgroundOpacity: parseAlphaNode(solidFill),
-    borderColor: childByLocalName(borderLine, 'noFill') ? null : parseColorNode(borderFill ?? borderLine, theme),
+    borderColor: childByLocalName(borderLine, 'noFill')
+      ? null
+      : parseColorNode(borderFill ?? borderLine, theme),
     borderOpacity: parseAlphaNode(borderFill ?? borderLine),
-    borderWidth: attr(borderLine, 'w') ? Number(attr(borderLine, 'w')) / 12700 : undefined,
+    borderWidth: attr(borderLine, 'w')
+      ? Number(attr(borderLine, 'w')) / 12700
+      : undefined,
   };
 }
 
@@ -476,31 +547,36 @@ function readTableStyles(xml: string, theme: ThemeModel): TableStyleMap {
   if (!xml) return {};
   const doc = parseXml(xml);
   const result: TableStyleMap = {};
-  descendantsByLocalName(doc.documentElement, 'tblStyle').forEach((styleNode) => {
-    const styleId = attr(styleNode, 'styleId');
-    if (!styleId) return;
-    const variants: Partial<Record<TableStyleVariantName, TableCellStyle>> = {};
-    ([
-      'wholeTbl',
-      'band1H',
-      'band2H',
-      'band1V',
-      'band2V',
-      'firstRow',
-      'lastRow',
-      'firstCol',
-      'lastCol',
-    ] as TableStyleVariantName[]).forEach((variantName) => {
-      const variantNode = childByLocalName(styleNode, variantName);
-      if (!variantNode) return;
-      variants[variantName] = readTableCellStyle(variantNode, theme);
-    });
-    result[styleId] = {
-      styleId,
-      styleName: attr(styleNode, 'styleName') ?? undefined,
-      variants,
-    };
-  });
+  descendantsByLocalName(doc.documentElement, 'tblStyle').forEach(
+    (styleNode) => {
+      const styleId = attr(styleNode, 'styleId');
+      if (!styleId) return;
+      const variants: Partial<Record<TableStyleVariantName, TableCellStyle>> =
+        {};
+      (
+        [
+          'wholeTbl',
+          'band1H',
+          'band2H',
+          'band1V',
+          'band2V',
+          'firstRow',
+          'lastRow',
+          'firstCol',
+          'lastCol',
+        ] as TableStyleVariantName[]
+      ).forEach((variantName) => {
+        const variantNode = childByLocalName(styleNode, variantName);
+        if (!variantNode) return;
+        variants[variantName] = readTableCellStyle(variantNode, theme);
+      });
+      result[styleId] = {
+        styleId,
+        styleName: attr(styleNode, 'styleName') ?? undefined,
+        variants,
+      };
+    },
+  );
   return result;
 }
 
@@ -509,11 +585,22 @@ function mergeTableCellStyle(...styles: Array<TableCellStyle | undefined>) {
     if (!style) return acc;
     return {
       text: mergeTextStyles(acc.text, style.text),
-      backgroundColor: style.backgroundColor !== undefined ? style.backgroundColor : acc.backgroundColor,
-      backgroundOpacity: style.backgroundOpacity !== undefined ? style.backgroundOpacity : acc.backgroundOpacity,
-      borderColor: style.borderColor !== undefined ? style.borderColor : acc.borderColor,
-      borderOpacity: style.borderOpacity !== undefined ? style.borderOpacity : acc.borderOpacity,
-      borderWidth: style.borderWidth !== undefined ? style.borderWidth : acc.borderWidth,
+      backgroundColor:
+        style.backgroundColor !== undefined
+          ? style.backgroundColor
+          : acc.backgroundColor,
+      backgroundOpacity:
+        style.backgroundOpacity !== undefined
+          ? style.backgroundOpacity
+          : acc.backgroundOpacity,
+      borderColor:
+        style.borderColor !== undefined ? style.borderColor : acc.borderColor,
+      borderOpacity:
+        style.borderOpacity !== undefined
+          ? style.borderOpacity
+          : acc.borderOpacity,
+      borderWidth:
+        style.borderWidth !== undefined ? style.borderWidth : acc.borderWidth,
     };
   }, {});
 }
@@ -543,7 +630,9 @@ function readCustomGeometry(spPr: Element | null | undefined) {
       const points = descendantsByLocalName(child, 'pt').map((point) => {
         const x = Number(attr(point, 'x') ?? Number.NaN);
         const y = Number(attr(point, 'y') ?? Number.NaN);
-        return Number.isFinite(x) && Number.isFinite(y) ? `${x} ${y}` : undefined;
+        return Number.isFinite(x) && Number.isFinite(y)
+          ? `${x} ${y}`
+          : undefined;
       });
 
       if (matchesLocalName(child, 'moveTo') && points[0]) {
@@ -552,7 +641,11 @@ function readCustomGeometry(spPr: Element | null | undefined) {
       if (matchesLocalName(child, 'lnTo') && points[0]) {
         commands.push(`L ${points[0]}`);
       }
-      if (matchesLocalName(child, 'cubicBezTo') && points.length >= 3 && points.every(Boolean)) {
+      if (
+        matchesLocalName(child, 'cubicBezTo') &&
+        points.length >= 3 &&
+        points.every(Boolean)
+      ) {
         commands.push(`C ${points.join(' ')}`);
       }
     });
@@ -568,23 +661,41 @@ function readCustomGeometry(spPr: Element | null | undefined) {
   };
 }
 
-function readShapeVisualStyle(spPr: Element | null | undefined, theme: ThemeModel) {
+function readShapeVisualStyle(
+  spPr: Element | null | undefined,
+  theme: ThemeModel,
+) {
   const xfrm = childByLocalName(spPr, 'xfrm');
   const noFill = Boolean(childByLocalName(spPr, 'noFill'));
   const line = childByLocalName(spPr, 'ln');
   const customGeometry = readCustomGeometry(spPr);
-  const shape = customGeometry.path ? 'path' : attr(childByLocalName(spPr, 'prstGeom'), 'prst') ?? 'rect';
-  const fillNode = childByLocalName(spPr, 'solidFill') ?? childByLocalName(spPr, 'gradFill') ?? childByLocalName(spPr, 'pattFill');
+  const shape = customGeometry.path
+    ? 'path'
+    : attr(childByLocalName(spPr, 'prstGeom'), 'prst') ?? 'rect';
+  const fillNode =
+    childByLocalName(spPr, 'solidFill') ??
+    childByLocalName(spPr, 'gradFill') ??
+    childByLocalName(spPr, 'pattFill');
   const fill = noFill || !fillNode ? null : parsePaintNode(fillNode, theme);
   const strokeNone = !line || Boolean(childByLocalName(line, 'noFill'));
-  const strokeNode = childByLocalName(line, 'solidFill') ?? childByLocalName(line, 'gradFill') ?? childByLocalName(line, 'pattFill');
-  const stroke = strokeNone || !strokeNode ? null : parseColorNode(strokeNode ?? line, theme);
-  const shadow = parseShadowNode(childByLocalName(spPr, 'effectLst') ?? childByLocalName(spPr, 'effectDag'), theme);
+  const strokeNode =
+    childByLocalName(line, 'solidFill') ??
+    childByLocalName(line, 'gradFill') ??
+    childByLocalName(line, 'pattFill');
+  const stroke =
+    strokeNone || !strokeNode
+      ? null
+      : parseColorNode(strokeNode ?? line, theme);
+  const shadow = parseShadowNode(
+    childByLocalName(spPr, 'effectLst') ?? childByLocalName(spPr, 'effectDag'),
+    theme,
+  );
 
   return {
     shape,
     fill,
-    fillOpacity: typeof fill === 'string' ? parseAlphaNode(fillNode) : undefined,
+    fillOpacity:
+      typeof fill === 'string' ? parseAlphaNode(fillNode) : undefined,
     stroke,
     strokeOpacity: parseAlphaNode(strokeNode ?? line),
     strokeWidth: attr(line, 'w') ? Number(attr(line, 'w')) / 12700 : undefined,
@@ -621,7 +732,10 @@ function colorWithOpacity(color: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-function readGradientFill(node: Element | null | undefined, theme: ThemeModel): GradientFill | undefined {
+function readGradientFill(
+  node: Element | null | undefined,
+  theme: ThemeModel,
+): GradientFill | undefined {
   if (!node || !matchesLocalName(node, 'gradFill')) return undefined;
 
   const stops = childrenByLocalName(childByLocalName(node, 'gsLst'), 'gs')
@@ -671,10 +785,18 @@ function parsePaintNode(node: Element | null | undefined, theme: ThemeModel) {
 function parseColorNode(node: Element | null | undefined, theme: ThemeModel) {
   const sourceNode = pickGradientColorNode(node);
   if (!sourceNode) return undefined;
-  const srgb = matchesLocalName(sourceNode, 'srgbClr') ? sourceNode : childByLocalName(sourceNode, 'srgbClr');
-  const scheme = matchesLocalName(sourceNode, 'schemeClr') ? sourceNode : childByLocalName(sourceNode, 'schemeClr');
-  const sys = matchesLocalName(sourceNode, 'sysClr') ? sourceNode : childByLocalName(sourceNode, 'sysClr');
-  const prst = matchesLocalName(sourceNode, 'prstClr') ? sourceNode : childByLocalName(sourceNode, 'prstClr');
+  const srgb = matchesLocalName(sourceNode, 'srgbClr')
+    ? sourceNode
+    : childByLocalName(sourceNode, 'srgbClr');
+  const scheme = matchesLocalName(sourceNode, 'schemeClr')
+    ? sourceNode
+    : childByLocalName(sourceNode, 'schemeClr');
+  const sys = matchesLocalName(sourceNode, 'sysClr')
+    ? sourceNode
+    : childByLocalName(sourceNode, 'sysClr');
+  const prst = matchesLocalName(sourceNode, 'prstClr')
+    ? sourceNode
+    : childByLocalName(sourceNode, 'prstClr');
   const colorNode = srgb ?? scheme ?? sys ?? prst;
   const base =
     attr(srgb, 'val') ??
@@ -685,27 +807,42 @@ function parseColorNode(node: Element | null | undefined, theme: ThemeModel) {
     .concat(descendantsByLocalName(colorNode, 'shade'))
     .concat(descendantsByLocalName(colorNode, 'lumMod'))
     .concat(descendantsByLocalName(colorNode, 'lumOff'))
-    .map((item) => ({ type: item.localName, val: Number(attr(item, 'val') ?? 0) }));
+    .map((item) => ({
+      type: item.localName,
+      val: Number(attr(item, 'val') ?? 0),
+    }));
   const raw = transformColor(toHexColor(base), transforms);
   return raw;
 }
 
 function parseAlphaNode(node: Element | null | undefined) {
-  return alphaToOpacity(attr(descendantByLocalName(pickGradientColorNode(node), 'alpha'), 'val'));
+  return alphaToOpacity(
+    attr(descendantByLocalName(pickGradientColorNode(node), 'alpha'), 'val'),
+  );
 }
 
 function parseRatioNode(node: Element | null | undefined) {
   return alphaToRatio(attr(descendantByLocalName(node, 'alpha'), 'val'));
 }
 
-function parseShadowNode(node: Element | null, theme: ThemeModel): ShadowStyle | undefined {
+function parseShadowNode(
+  node: Element | null,
+  theme: ThemeModel,
+): ShadowStyle | undefined {
   if (!node) return undefined;
-  const colorNode = childByLocalName(node, 'srgbClr') ?? childByLocalName(node, 'schemeClr');
+  const colorNode =
+    childByLocalName(node, 'srgbClr') ?? childByLocalName(node, 'schemeClr');
   const color = parseColorNode(colorNode, theme);
   const opacity = parseRatioNode(colorNode);
-  const blur = attr(node, 'blurRad') ? Number(attr(node, 'blurRad')) / 12700 : undefined;
-  const dist = attr(node, 'dist') ? Number(attr(node, 'dist')) / 12700 : undefined;
-  const dir = attr(node, 'dir') ? (Number(attr(node, 'dir')) / 60000) * (Math.PI / 180) : undefined;
+  const blur = attr(node, 'blurRad')
+    ? Number(attr(node, 'blurRad')) / 12700
+    : undefined;
+  const dist = attr(node, 'dist')
+    ? Number(attr(node, 'dist')) / 12700
+    : undefined;
+  const dir = attr(node, 'dir')
+    ? (Number(attr(node, 'dir')) / 60000) * (Math.PI / 180)
+    : undefined;
   return {
     color,
     opacity,
@@ -719,155 +856,36 @@ function resolveMediaRef(
   target: string | undefined,
   packageState: PackageState,
 ) {
-  return resolvePackageMediaRef(target, packageState.mediaByPath, packageState.mediaByName, 'ppt');
+  return resolvePackageMediaRef(
+    target,
+    packageState.mediaByPath,
+    packageState.mediaByName,
+    'ppt',
+  );
 }
 
-function resolveXmlTarget(target: string | undefined, packageState: PackageState) {
+function resolveXmlTarget(
+  target: string | undefined,
+  packageState: PackageState,
+) {
   if (!target) return undefined;
   const normalized = target.replace(/^\.\.\//, '');
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
-function decodeMojibakeDeep<T>(value: T): T {
-  if (typeof value === 'string') {
-    return decodeMojibake(value) as T;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => decodeMojibakeDeep(item)) as T;
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, decodeMojibakeDeep(item)]),
-    ) as T;
-  }
-  return value;
-}
-
-function parseJsonProperty<T>(properties: Record<string, string>, key: string): T | undefined {
-  const raw = properties[key];
-  if (!raw) return undefined;
-  try {
-    return decodeMojibakeDeep(JSON.parse(raw)) as T;
-  } catch {
-    try {
-      return decodeMojibakeDeep(JSON.parse(raw.replace(/[?�]quot;/g, '"'))) as T;
-    } catch {
-      return undefined;
-    }
-  }
-}
-
-function readWebExtensionProperties(webExtensionNode: Element) {
-  const properties: Record<string, string> = {};
-  descendantsByLocalName(webExtensionNode, 'property').forEach((propertyNode) => {
-    const key = attr(propertyNode, 'key');
-    const value = attr(propertyNode, 'value');
-    if (key && value !== undefined) {
-      properties[key] = value;
-    }
-  });
-  return properties;
-}
-
-function normalizeLegendPosition(value: unknown): ChartElement['chart']['legendPosition'] | undefined {
-  if (typeof value !== 'string') return undefined;
-  const lower = value.toLowerCase();
-  if (lower.includes('bottom')) return 'bottom';
-  if (lower.includes('top')) return 'top';
-  if (lower.includes('left')) return 'left';
-  if (lower.includes('right')) return 'right';
-  return undefined;
-}
-
-function normalizeChartColor(value: unknown) {
-  if (typeof value === 'string') return value;
-  if (value && typeof value === 'object') {
-    const color = (value as { color?: unknown; rgb?: unknown }).color ?? (value as { rgb?: unknown }).rgb;
-    if (typeof color === 'string') return color;
-  }
-  return undefined;
-}
-
-function collectChartColors(style: Record<string, unknown> | undefined, fallbackKey: 'seriesThemeColor' | 'fill') {
-  if (!style) return [];
-  if (fallbackKey === 'seriesThemeColor' && Array.isArray(style.seriesThemeColor)) {
-    return style.seriesThemeColor.map(normalizeChartColor).filter((color): color is string => Boolean(color));
-  }
-  const fill = style.fill as { props?: unknown[] } | undefined;
-  if (fallbackKey === 'fill' && Array.isArray(fill?.props)) {
-    return fill.props
-      .map((item) => normalizeChartColor((item as { color?: unknown } | undefined)?.color))
-      .filter((color): color is string => Boolean(color));
-  }
-  return [];
-}
-
-function readWpsLegendStyle(legend: unknown): ChartElement['chart']['legendStyle'] | undefined {
-  if (!legend || typeof legend !== 'object') return undefined;
-  const legendObject = legend as Record<string, unknown>;
-  const textStyle = legendObject.textStyle && typeof legendObject.textStyle === 'object'
-    ? (legendObject.textStyle as Record<string, unknown>)
-    : legendObject;
-  const fontFamily = textStyle.fontFamily;
-  const fontSize = Number(textStyle.fontSize);
-  const fontStyle = textStyle.fontStyle;
-  const fontWeight = textStyle.fontWeight;
-  const color = normalizeChartColor(textStyle.color);
-  const itemWidth = Number(legendObject.itemWidth);
-  const itemHeight = Number(legendObject.itemHeight);
-  const style = {
-    itemWidth: Number.isFinite(itemWidth) && itemWidth > 0 ? itemWidth : undefined,
-    itemHeight: Number.isFinite(itemHeight) && itemHeight > 0 ? itemHeight : undefined,
-    textStyle: {
-      color,
-      fontFamily: typeof fontFamily === 'string' ? fontFamily : undefined,
-      fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : undefined,
-      fontStyle: typeof fontStyle === 'string' ? fontStyle : undefined,
-      fontWeight: typeof fontWeight === 'string' || typeof fontWeight === 'number' ? fontWeight : undefined,
-    },
-  };
-  const normalizedTextStyle = Object.fromEntries(Object.entries(style.textStyle).filter(([, value]) => value !== undefined));
-  return {
-    ...(style.itemWidth !== undefined ? { itemWidth: style.itemWidth } : {}),
-    ...(style.itemHeight !== undefined ? { itemHeight: style.itemHeight } : {}),
-    ...(Object.keys(normalizedTextStyle).length ? { textStyle: normalizedTextStyle } : {}),
-  };
-}
-
-function readPercent(value: unknown) {
-  if (typeof value !== 'string') return undefined;
-  const parsed = Number(value.replace(/%$/, ''));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function readRadiusPair(value: unknown): [string, string] | undefined {
-  if (!Array.isArray(value) || typeof value[0] !== 'string' || typeof value[1] !== 'string') return undefined;
-  return [value[0], value[1]];
-}
-
-function readWpsSeriesStyle(style: Record<string, unknown> | undefined) {
-  return Array.isArray(style?.series) && style.series[0] && typeof style.series[0] === 'object'
-    ? (style.series[0] as Record<string, unknown>)
-    : undefined;
-}
-
-function readWpsPiePointStyles(seriesStyle: Record<string, unknown> | undefined, count: number) {
-  const itemStyle = seriesStyle?.itemStyle;
-  if (!itemStyle || typeof itemStyle !== 'object') return undefined;
-  const borderColor = normalizeChartColor((itemStyle as { borderColor?: unknown }).borderColor);
-  const borderWidth = Number((itemStyle as { borderWidth?: unknown }).borderWidth);
-  if (!borderColor && !Number.isFinite(borderWidth)) return undefined;
-  return Array.from({ length: count }, () => ({
-    borderColor,
-    borderWidth: Number.isFinite(borderWidth) ? borderWidth : undefined,
-  }));
-}
-
-function resolveWebExtensionSnapshot(doc: XMLDocument, webExtensionPath: string, packageState: PackageState) {
+function resolveWebExtensionSnapshot(
+  doc: XMLDocument,
+  webExtensionPath: string,
+  packageState: PackageState,
+) {
   const snapshot = descendantByLocalName(doc.documentElement, 'snapshot');
   const embed = attr(snapshot, 'r:embed') ?? attr(snapshot, 'embed');
-  const relsPath = webExtensionPath.replace(/^ppt\/webExtensions\//, 'ppt/webExtensions/_rels/').concat('.rels');
-  const target = embed ? packageState.relationships[relsPath]?.[embed] : undefined;
+  const relsPath = webExtensionPath
+    .replace(/^ppt\/webExtensions\//, 'ppt/webExtensions/_rels/')
+    .concat('.rels');
+  const target = embed
+    ? packageState.relationships[relsPath]?.[embed]
+    : undefined;
   return resolveMediaRef(target, packageState);
 }
 
@@ -892,7 +910,10 @@ function readSlideBackground(
   };
 }
 
-function readPlaceholder(node: Element | null, theme: ThemeModel): PlaceholderStyle {
+function readPlaceholder(
+  node: Element | null,
+  theme: ThemeModel,
+): PlaceholderStyle {
   if (!node) return {};
   const ph = descendantByLocalName(node, 'ph');
   const spPr = childByLocalName(node, 'spPr');
@@ -902,7 +923,9 @@ function readPlaceholder(node: Element | null, theme: ThemeModel): PlaceholderSt
   const visual = readShapeVisualStyle(spPr, theme);
   const textBody = childByLocalName(node, 'txBody');
   const bodyPr = childByLocalName(textBody, 'bodyPr');
-  const defRPr = descendantByLocalName(textBody, 'defRPr') ?? descendantByLocalName(textBody, 'endParaRPr');
+  const defRPr =
+    descendantByLocalName(textBody, 'defRPr') ??
+    descendantByLocalName(textBody, 'endParaRPr');
 
   return {
     type: attr(ph, 'type') ?? undefined,
@@ -912,7 +935,10 @@ function readPlaceholder(node: Element | null, theme: ThemeModel): PlaceholderSt
     width: emuValue(ext, 'cx'),
     height: emuValue(ext, 'cy'),
     ...visual,
-    text: mergeTextStyles(readDefaultRunStyle(defRPr, theme), readBodyPrStyle(bodyPr)),
+    text: mergeTextStyles(
+      readDefaultRunStyle(defRPr, theme),
+      readBodyPrStyle(bodyPr),
+    ),
     body: mergeTextStyles(readBodyPrStyle(bodyPr)),
     levels: readLevelStyles(textBody, theme),
   };
@@ -946,16 +972,18 @@ function resolvePlaceholderStyle(
   return undefined;
 }
 
-function translateElement(node: { x: number; y: number; width: number; height: number }, dx = 0, dy = 0) {
-  return {
-    x: node.x + dx,
-    y: node.y + dy,
-  };
-}
-
 function transformGroupedElement(
   element: { x: number; y: number; width: number; height: number },
-  group: { x: number; y: number; width: number; height: number; childX: number; childY: number; childWidth: number; childHeight: number },
+  group: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    childX: number;
+    childY: number;
+    childWidth: number;
+    childHeight: number;
+  },
 ) {
   const scaleX = group.childWidth ? group.width / group.childWidth : 1;
   const scaleY = group.childHeight ? group.height / group.childHeight : 1;
@@ -984,8 +1012,14 @@ function parseGroupElement(
   const offsetY = emuValue(childByLocalName(xfrm, 'off'), 'y') ?? 0;
   const childX = emuValue(childByLocalName(xfrm, 'chOff'), 'x') ?? 0;
   const childY = emuValue(childByLocalName(xfrm, 'chOff'), 'y') ?? 0;
-  const childWidth = emuValue(childByLocalName(xfrm, 'chExt'), 'cx') ?? emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? 0;
-  const childHeight = emuValue(childByLocalName(xfrm, 'chExt'), 'cy') ?? emuValue(childByLocalName(xfrm, 'ext'), 'cy') ?? 0;
+  const childWidth =
+    emuValue(childByLocalName(xfrm, 'chExt'), 'cx') ??
+    emuValue(childByLocalName(xfrm, 'ext'), 'cx') ??
+    0;
+  const childHeight =
+    emuValue(childByLocalName(xfrm, 'chExt'), 'cy') ??
+    emuValue(childByLocalName(xfrm, 'ext'), 'cy') ??
+    0;
   const width = emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? 0;
   const height = emuValue(childByLocalName(xfrm, 'ext'), 'cy') ?? 0;
   const inner = childByLocalName(node, 'spTree') ?? node;
@@ -1034,11 +1068,20 @@ function parseVisualTree(
     .concat(childrenByLocalName(spTree, 'graphicFrame'))
     .concat(childrenByLocalName(spTree, 'cxnSp'))
     .concat(childrenByLocalName(spTree, 'grpSp'))
-    .sort((a, b) => Array.from(spTree?.children ?? []).indexOf(a) - Array.from(spTree?.children ?? []).indexOf(b));
+    .sort(
+      (a, b) =>
+        Array.from(spTree?.children ?? []).indexOf(a) -
+        Array.from(spTree?.children ?? []).indexOf(b),
+    );
 
   nodes.forEach((node, elementIndex) => {
     if (matchesLocalName(node, 'pic')) {
-      const chart = parseWpsWebExtensionChart(node, elementIndex, packageState, rels);
+      const chart = parseWpsWebExtensionChart(
+        node,
+        elementIndex,
+        packageState,
+        rels,
+      );
       if (chart) {
         chart.id = `${sourcePrefix}-${chart.id}`;
         elements.push(chart);
@@ -1051,9 +1094,19 @@ function parseVisualTree(
     }
 
     if (matchesLocalName(node, 'graphicFrame')) {
-      const chart = parseChartElement(node, elementIndex, theme, packageState, rels);
+      const chart = parseChartElement(
+        node,
+        elementIndex,
+        theme,
+        packageState,
+        rels,
+      );
       const tbl = descendantByLocalName(node, 'tbl');
-      const element = chart ?? (tbl ? parseTableElement(node, elementIndex, theme, tableStyles) : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
+      const element =
+        chart ??
+        (tbl
+          ? parseTableElement(node, elementIndex, theme, tableStyles)
+          : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
       element.id = `${sourcePrefix}-${element.id}`;
       elements.push(element);
       return;
@@ -1079,10 +1132,14 @@ function parseVisualTree(
     if (ph && !includePlaceholders) {
       return;
     }
-    const inherited = ph ? resolvePlaceholderStyle(ph, placeholderStyles) : undefined;
+    const inherited = ph
+      ? resolvePlaceholderStyle(ph, placeholderStyles)
+      : undefined;
     const hasText = Boolean(childByLocalName(node, 'txBody'));
     const visualNode = childByLocalName(node, 'spPr');
-    const visual = visualNode ? readShapeVisualStyle(visualNode, theme) : undefined;
+    const visual = visualNode
+      ? readShapeVisualStyle(visualNode, theme)
+      : undefined;
     const hasVisibleVisual = Boolean(
       visual &&
         ((visual.fill !== undefined && visual.fill !== null) ||
@@ -1092,13 +1149,23 @@ function parseVisualTree(
     if (ph && !placeholderStyles && !hasText && !hasVisibleVisual) {
       return;
     }
-    if (ph && !hasText && !inherited?.fill && !inherited?.stroke && !inherited?.shadow) {
+    if (
+      ph &&
+      !hasText &&
+      !inherited?.fill &&
+      !inherited?.stroke &&
+      !inherited?.shadow
+    ) {
       return;
     }
-    elements.push(hasText
-      ? parseTextElement(node, elementIndex, theme, inherited)
-      : parseShapeElement(node, elementIndex, theme, inherited));
-    elements[elements.length - 1].id = `${sourcePrefix}-${elements[elements.length - 1].id}`;
+    elements.push(
+      hasText
+        ? parseTextElement(node, elementIndex, theme, inherited)
+        : parseShapeElement(node, elementIndex, theme, inherited),
+    );
+    elements[elements.length - 1].id = `${sourcePrefix}-${
+      elements[elements.length - 1].id
+    }`;
   });
 
   return elements;
@@ -1124,7 +1191,10 @@ function readMaster(
     const key = `${style.type ?? 'body'}:${style.idx ?? '0'}`;
     placeholders[key] = style;
   });
-  const textPresets = readTextPresetMap(childByLocalName(doc.documentElement, 'txStyles'), theme);
+  const textPresets = readTextPresetMap(
+    childByLocalName(doc.documentElement, 'txStyles'),
+    theme,
+  );
   const elements = parseVisualTree(
     childByLocalName(cSld, 'spTree'),
     theme,
@@ -1159,7 +1229,10 @@ function readLayout(
     const key = `${style.type ?? 'body'}:${style.idx ?? '0'}`;
     placeholders[key] = style;
   });
-  const textPresets = readTextPresetMap(childByLocalName(doc.documentElement, 'txStyles'), theme);
+  const textPresets = readTextPresetMap(
+    childByLocalName(doc.documentElement, 'txStyles'),
+    theme,
+  );
   const elements = parseVisualTree(
     childByLocalName(cSld, 'spTree'),
     theme,
@@ -1170,27 +1243,53 @@ function readLayout(
     tableStyles,
     false,
   );
-  return { path: relPath, masterPath, placeholders, textPresets, background, elements };
+  return {
+    path: relPath,
+    masterPath,
+    placeholders,
+    textPresets,
+    background,
+    elements,
+  };
 }
 
-function readPresentationLayouts(entries: OfficeEntryMap, packageState: PackageState, theme: ThemeModel, tableStyles?: TableStyleMap) {
+function readPresentationLayouts(
+  entries: OfficeEntryMap,
+  packageState: PackageState,
+  theme: ThemeModel,
+  tableStyles?: TableStyleMap,
+) {
   // 先读取 master，再读取它关联的 layout；后续 slide 会按 layout/master 继承占位符和默认样式。
-  const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
+  const presentationRels =
+    packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
   const masterDefinitions: MasterDefinition[] = [];
   const masterLayoutDefinitions: Record<string, LayoutDefinition[]> = {};
 
-  Object.entries(presentationRels).forEach(([relId, target]) => {
+  Object.entries(presentationRels).forEach(([, target]) => {
     if (!target.includes('slideMasters/')) return;
     const xmlPath = target.startsWith('ppt/') ? target : `ppt/${target}`;
-    const relPath = xmlPath.replace(/^ppt\/slideMasters\//, 'ppt/slideMasters/_rels/').replace(/\.xml$/, '.xml.rels');
+    const relPath = xmlPath
+      .replace(/^ppt\/slideMasters\//, 'ppt/slideMasters/_rels/')
+      .replace(/\.xml$/, '.xml.rels');
     const masterRels = packageState.relationships[relPath] ?? {};
-    const master = readMaster(readXml(entries, xmlPath), theme, xmlPath, packageState, masterRels, tableStyles);
+    const master = readMaster(
+      readXml(entries, xmlPath),
+      theme,
+      xmlPath,
+      packageState,
+      masterRels,
+      tableStyles,
+    );
     masterDefinitions.push(master);
     masterLayoutDefinitions[xmlPath] = Object.values(masterRels)
       .filter((item) => item.includes('slideLayouts/'))
       .map((layoutTarget) => {
-        const layoutPath = layoutTarget.startsWith('ppt/') ? layoutTarget : `ppt/${layoutTarget}`;
-        const layoutRelPath = layoutPath.replace(/^ppt\/slideLayouts\//, 'ppt/slideLayouts/_rels/').concat('.rels');
+        const layoutPath = layoutTarget.startsWith('ppt/')
+          ? layoutTarget
+          : `ppt/${layoutTarget}`;
+        const layoutRelPath = layoutPath
+          .replace(/^ppt\/slideLayouts\//, 'ppt/slideLayouts/_rels/')
+          .concat('.rels');
         return readLayout(
           readXml(entries, layoutPath),
           theme,
@@ -1211,10 +1310,18 @@ function mergePlaceholder(
   layoutPlaceholders: Record<string, PlaceholderStyle>,
   masterPlaceholders: Record<string, PlaceholderStyle>,
 ) {
-  return mergePlaceholderStyle(masterPlaceholders[key], layoutPlaceholders[key]);
+  return mergePlaceholderStyle(
+    masterPlaceholders[key],
+    layoutPlaceholders[key],
+  );
 }
 
-function parseTextElement(node: Element, index: number, theme: ThemeModel, inherited?: PlaceholderStyle): TextElement {
+function parseTextElement(
+  node: Element,
+  index: number,
+  theme: ThemeModel,
+  inherited?: PlaceholderStyle,
+): TextElement {
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
@@ -1225,68 +1332,90 @@ function parseTextElement(node: Element, index: number, theme: ThemeModel, inher
   const localLevels = readLevelStyles(txBody, theme);
   const bodyStyle = mergeTextStyles(inherited?.body, readBodyPrStyle(bodyPr));
 
-  const paragraphs: TextParagraph[] = childrenByLocalName(txBody, 'p').map((paragraphNode) => {
-    const paragraphProps = childByLocalName(paragraphNode, 'pPr');
-    const level = Number(attr(paragraphProps, 'lvl') ?? 0);
-    // 文本样式来源很多：母版占位符、layout、段落级别、run 自身，需要按 Office 优先级合并。
-    const levelStyle = mergeTextStyles(
-      inherited?.levels?.[level],
-      localLevels[level],
-      readParagraphLevelStyle(paragraphProps, theme),
-    );
-    const defaultRunStyle = mergeTextStyles(
-      inherited?.text,
-      inherited?.body,
-      inherited?.levels?.[level],
-      localLevels[level],
-      readDefaultRunStyle(childByLocalName(paragraphProps, 'defRPr'), theme),
-      readDefaultRunStyle(childByLocalName(paragraphNode, 'endParaRPr'), theme),
-    );
+  const paragraphs: TextParagraph[] = childrenByLocalName(txBody, 'p').map(
+    (paragraphNode) => {
+      const paragraphProps = childByLocalName(paragraphNode, 'pPr');
+      const level = Number(attr(paragraphProps, 'lvl') ?? 0);
+      // 文本样式来源很多：母版占位符、layout、段落级别、run 自身，需要按 Office 优先级合并。
+      const levelStyle = mergeTextStyles(
+        inherited?.levels?.[level],
+        localLevels[level],
+        readParagraphLevelStyle(paragraphProps, theme),
+      );
+      const defaultRunStyle = mergeTextStyles(
+        inherited?.text,
+        inherited?.body,
+        inherited?.levels?.[level],
+        localLevels[level],
+        readDefaultRunStyle(childByLocalName(paragraphProps, 'defRPr'), theme),
+        readDefaultRunStyle(
+          childByLocalName(paragraphNode, 'endParaRPr'),
+          theme,
+        ),
+      );
 
-    const runs: TextRun[] = [];
-    Array.from(paragraphNode.children).forEach((child) => {
-      if (child.localName === 'r') {
-        const runProps = childByLocalName(child, 'rPr');
+      const runs: TextRun[] = [];
+      Array.from(paragraphNode.children).forEach((child) => {
+        if (child.localName === 'r') {
+          const runProps = childByLocalName(child, 'rPr');
+          runs.push({
+            text: textContent(childByLocalName(child, 't')),
+            style: mergeTextStyles(
+              defaultRunStyle,
+              readDefaultRunStyle(runProps, theme),
+            ),
+          });
+          return;
+        }
+
+        if (child.localName === 'fld') {
+          const runProps = childByLocalName(child, 'rPr');
+          runs.push({
+            text:
+              textContent(childByLocalName(child, 't')) ||
+              child.textContent ||
+              '',
+            style: mergeTextStyles(
+              defaultRunStyle,
+              readDefaultRunStyle(runProps, theme),
+            ),
+          });
+          return;
+        }
+
+        if (child.localName === 'br') {
+          const runProps = childByLocalName(child, 'rPr');
+          runs.push({
+            text: '\n',
+            style: mergeTextStyles(
+              defaultRunStyle,
+              readDefaultRunStyle(runProps, theme),
+            ),
+          });
+        }
+      });
+
+      if (!runs.length) {
         runs.push({
-          text: textContent(childByLocalName(child, 't')),
-          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
+          text: paragraphNode.textContent ?? '',
+          style: defaultRunStyle,
         });
-        return;
       }
 
-      if (child.localName === 'fld') {
-        const runProps = childByLocalName(child, 'rPr');
-        runs.push({
-          text: textContent(childByLocalName(child, 't')) || child.textContent || '',
-          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
-        });
-        return;
-      }
+      return {
+        level,
+        runs,
+        style: mergeTextStyles(levelStyle, {
+          align: levelStyle.align ?? bodyStyle.align,
+        }),
+        bullet: levelStyle.bullet,
+      };
+    },
+  );
 
-      if (child.localName === 'br') {
-        const runProps = childByLocalName(child, 'rPr');
-        runs.push({
-          text: '\n',
-          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
-        });
-      }
-    });
-
-    if (!runs.length) {
-      runs.push({ text: paragraphNode.textContent ?? '', style: defaultRunStyle });
-    }
-
-    return {
-      level,
-      runs,
-      style: mergeTextStyles(levelStyle, {
-        align: levelStyle.align ?? bodyStyle.align,
-      }),
-      bullet: levelStyle.bullet,
-    };
-  });
-
-  const firstRunStyle = paragraphs.flatMap((paragraph) => paragraph.runs).find(Boolean)?.style ?? {};
+  const firstRunStyle =
+    paragraphs.flatMap((paragraph) => paragraph.runs).find(Boolean)?.style ??
+    {};
   const fallbackStyle = mergeTextStyles(inherited?.text, bodyStyle);
 
   return {
@@ -1318,20 +1447,27 @@ function parseTextElement(node: Element, index: number, theme: ThemeModel, inher
       underline: firstRunStyle.underline ?? fallbackStyle.underline,
       color: firstRunStyle.color ?? fallbackStyle.color,
       opacity: firstRunStyle.opacity ?? fallbackStyle.opacity,
-      align: paragraphs[0]?.style?.align ?? bodyStyle.align ?? fallbackStyle.align,
+      align:
+        paragraphs[0]?.style?.align ?? bodyStyle.align ?? fallbackStyle.align,
       lineHeight: paragraphs[0]?.style?.lineHeight ?? fallbackStyle.lineHeight,
       marginLeft: bodyStyle.marginLeft,
       marginRight: bodyStyle.marginRight,
       marginTop: bodyStyle.marginTop,
       marginBottom: bodyStyle.marginBottom,
-      verticalAlign: bodyStyle.verticalAlign ?? fallbackStyle.verticalAlign ?? 'top',
+      verticalAlign:
+        bodyStyle.verticalAlign ?? fallbackStyle.verticalAlign ?? 'top',
       writingMode: bodyStyle.writingMode ?? fallbackStyle.writingMode,
       fit: bodyStyle.fit ?? fallbackStyle.fit,
     },
   };
 }
 
-function parseShapeElement(node: Element, index: number, theme: ThemeModel, inherited?: PlaceholderStyle): ShapeElement {
+function parseShapeElement(
+  node: Element,
+  index: number,
+  theme: ThemeModel,
+  inherited?: PlaceholderStyle,
+): ShapeElement {
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
   const ph = descendantByLocalName(node, 'ph');
@@ -1345,8 +1481,10 @@ function parseShapeElement(node: Element, index: number, theme: ThemeModel, inhe
     viewBox: visual.viewBox,
     x: emuValue(childByLocalName(xfrm, 'off'), 'x') ?? inherited?.x ?? 0,
     y: emuValue(childByLocalName(xfrm, 'off'), 'y') ?? inherited?.y ?? 0,
-    width: emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? inherited?.width ?? 0,
-    height: emuValue(childByLocalName(xfrm, 'ext'), 'cy') ?? inherited?.height ?? 0,
+    width:
+      emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? inherited?.width ?? 0,
+    height:
+      emuValue(childByLocalName(xfrm, 'ext'), 'cy') ?? inherited?.height ?? 0,
     rotate: visual.rotate,
     flipH: visual.flipH,
     flipV: visual.flipV,
@@ -1375,15 +1513,27 @@ function parseImageElement(
   const svgBlip = descendantByLocalName(node, 'svgBlip');
   const blipFill = childByLocalName(node, 'blipFill');
   const srcRect = childByLocalName(blipFill, 'srcRect');
-  const embed = attr(svgBlip, 'r:embed') ?? attr(svgBlip, 'embed') ?? attr(blip, 'r:embed') ?? attr(blip, 'embed');
+  const embed =
+    attr(svgBlip, 'r:embed') ??
+    attr(svgBlip, 'embed') ??
+    attr(blip, 'r:embed') ??
+    attr(blip, 'embed');
   const target = embed ? slideRels[embed] : undefined;
   const resolved = resolveMediaRef(target, packageState);
   const crop: ImageCrop | undefined = srcRect
     ? {
-        left: attr(srcRect, 'l') ? Number(attr(srcRect, 'l')) / 100000 : undefined,
-        top: attr(srcRect, 't') ? Number(attr(srcRect, 't')) / 100000 : undefined,
-        right: attr(srcRect, 'r') ? Number(attr(srcRect, 'r')) / 100000 : undefined,
-        bottom: attr(srcRect, 'b') ? Number(attr(srcRect, 'b')) / 100000 : undefined,
+        left: attr(srcRect, 'l')
+          ? Number(attr(srcRect, 'l')) / 100000
+          : undefined,
+        top: attr(srcRect, 't')
+          ? Number(attr(srcRect, 't')) / 100000
+          : undefined,
+        right: attr(srcRect, 'r')
+          ? Number(attr(srcRect, 'r')) / 100000
+          : undefined,
+        bottom: attr(srcRect, 'b')
+          ? Number(attr(srcRect, 'b')) / 100000
+          : undefined,
       }
     : undefined;
 
@@ -1409,245 +1559,43 @@ function parseWpsWebExtensionChart(
   packageState: PackageState,
   rels: Record<string, string>,
 ): ChartElement | undefined {
+  // 关系和位置属于 PPTX 包装层，WPS JSON 到图表模型的转换由共享适配器负责。
   const webExtensionRef = descendantByLocalName(node, 'webExtensionRef');
   const relId = attr(webExtensionRef, 'r:id') ?? attr(webExtensionRef, 'id');
   const target = relId ? rels[relId] : undefined;
   const webExtensionPath = resolveXmlTarget(target, packageState);
-  const xml = webExtensionPath ? (packageState.entries.get(webExtensionPath) as string | undefined) : undefined;
+  const xml = webExtensionPath
+    ? (packageState.entries.get(webExtensionPath) as string | undefined)
+    : undefined;
   if (!xml || !webExtensionPath) return undefined;
 
   const doc = parseXml(xml);
-  const snapshotSrc = resolveWebExtensionSnapshot(doc, webExtensionPath, packageState);
-  const properties = readWebExtensionProperties(doc.documentElement);
-  const demoData = parseJsonProperty<Record<string, unknown>>(properties, 'demoData');
-  const style = parseJsonProperty<Record<string, unknown>>(properties, 'style');
-  const extStyle = parseJsonProperty<Record<string, unknown>>(properties, 'extStyle');
-  const dschart = parseJsonProperty<Record<string, unknown>>(properties, 'dschart');
-  const mapData = dschart && typeof dschart === 'object' ? (dschart as { json?: { data?: unknown[]; props?: Record<string, unknown> } }).json : undefined;
-  const chartStyle = style ?? mapData?.props;
-  const title = chartStyle?.title && typeof chartStyle.title === 'object' ? (chartStyle.title as { text?: unknown; show?: unknown }) : undefined;
-  const showLegend = chartStyle?.legend && typeof chartStyle.legend === 'object' ? (chartStyle.legend as { show?: unknown }).show : undefined;
-  const legendPosition = chartStyle?.legend && typeof chartStyle.legend === 'object'
-    ? normalizeLegendPosition((chartStyle.legend as { position?: unknown }).position)
-    : undefined;
-  const legendStyle = readWpsLegendStyle(chartStyle?.legend);
-  const labelStyle = chartStyle?.label && typeof chartStyle.label === 'object' ? (chartStyle.label as Record<string, unknown>) : undefined;
-  const textLabel = labelStyle?.textLabel;
-  const numberLabel = labelStyle?.numberLabel;
-  const textLabelStyle = textLabel && typeof textLabel === 'object'
-    ? (textLabel as Record<string, unknown>)
-    : undefined;
-  const numberLabelStyle = numberLabel && typeof numberLabel === 'object'
-    ? (numberLabel as Record<string, unknown>)
-    : undefined;
-  const labelPosition = typeof labelStyle?.position === 'string'
-    ? labelStyle.position
-    : typeof textLabelStyle?.position === 'string'
-      ? textLabelStyle.position
-      : typeof numberLabelStyle?.position === 'string'
-        ? numberLabelStyle.position
-        : undefined;
-  const labelSeparator = typeof labelStyle?.separator === 'string'
-    ? labelStyle.separator
-    : typeof textLabelStyle?.separator === 'string'
-      ? textLabelStyle.separator
-      : typeof numberLabelStyle?.separator === 'string'
-        ? numberLabelStyle.separator
-        : undefined;
-  const labelShowVal = Boolean(labelStyle?.show ?? numberLabelStyle?.show);
-  const labelShowCatName = Boolean(labelStyle?.showCategoryName ?? textLabelStyle?.show ?? numberLabelStyle?.showCatName);
-  const labelShowSerName = Boolean(labelStyle?.showSeriesName ?? textLabelStyle?.showSerName ?? numberLabelStyle?.showSerName);
-  const labelShowPercent = Boolean(labelStyle?.showPercent ?? numberLabelStyle?.showPercent);
-  const labelShowLeaderLines = Boolean(labelStyle?.showLeaderLines ?? numberLabelStyle?.showLeaderLines);
-  const showDataLabels = Boolean(
-    (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { show?: unknown }).show) ||
-      (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { numberLabel?: { show?: unknown }; textLabel?: { show?: unknown } }).numberLabel?.show) ||
-      (chartStyle?.label && typeof chartStyle.label === 'object' && (chartStyle.label as { numberLabel?: { show?: unknown }; textLabel?: { show?: unknown } }).textLabel?.show),
+  const snapshotSrc = resolveWebExtensionSnapshot(
+    doc,
+    webExtensionPath,
+    packageState,
   );
-  const titleText =
-    typeof title?.show === 'boolean' && title.show !== false && typeof title?.text === 'string'
-      ? decodeMojibake(title.text)
-      : undefined;
+  const chart = parseWpsWebExtensionChartModel(
+    doc.documentElement,
+    snapshotSrc,
+  );
+  if (!chart) return undefined;
+
   const xfrm = childByLocalName(childByLocalName(node, 'spPr') ?? node, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
   const ext = childByLocalName(xfrm, 'ext');
-  const x = emuValue(off, 'x') ?? 0;
-  const y = emuValue(off, 'y') ?? 0;
-  const width = emuValue(ext, 'cx') ?? 0;
-  const height = emuValue(ext, 'cy') ?? 0;
 
-  if (demoData && Array.isArray(demoData.data) && Array.isArray(demoData.data[0])) {
-    const rows = demoData.data.slice(1).filter((row): row is unknown[] => Array.isArray(row));
-    const headers = demoData.data[0] as unknown[];
-    const isPie = String(properties.type ?? '').toLowerCase().includes('pie');
-    const pieType = typeof style?.pieType === 'string' ? style.pieType.toLowerCase() : '';
-    const radius = readRadiusPair(style?.radius);
-    const seriesStyle = readWpsSeriesStyle(extStyle) ?? readWpsSeriesStyle(style);
-    const roseType =
-      seriesStyle?.roseType === 'radius' || seriesStyle?.roseType === 'area'
-        ? seriesStyle.roseType
-        : undefined;
-    const categories = rows.map((row) => decodeMojibake(String(row[0] ?? '').trim())).filter(Boolean);
-    const seriesNames = headers.slice(1).map((header, seriesIndex) =>
-      decodeMojibake(String(header ?? `Series ${seriesIndex + 1}`).trim()),
-    );
-    const palette = collectChartColors(chartStyle, 'seriesThemeColor');
-    const chartType = isPie && (pieType.includes('doughnut') || radius || roseType) ? 'doughnut' : isPie ? 'pie' : 'line';
-    const isPieChart = chartType === 'pie' || chartType === 'doughnut';
-    const piePointStyles = isPieChart ? readWpsPiePointStyles(seriesStyle, categories.length) : undefined;
-    const sourceSeries = seriesNames.length
-      ? seriesNames.map((name, seriesIndex) => ({
-          name,
-          values: rows.map((row) => Number(row[seriesIndex + 1] ?? 0) || 0),
-          type: isPieChart ? ('pie' as const) : ((style?.areaStyle && typeof style.areaStyle === 'object' && (style.areaStyle as { show?: unknown }).show) ? ('area' as const) : ('line' as const)),
-          color: palette[seriesIndex],
-          smooth:
-            Boolean(
-              (style?.smooth as boolean | undefined) ??
-                (Array.isArray(style?.series)
-                  ? (style.series as Array<{ smooth?: unknown }>)[0]?.smooth
-                  : undefined),
-            ),
-          marker:
-            style?.symbol && Array.isArray(style.symbol) && (style.symbol[0] as { show?: unknown; size?: unknown })?.show === false
-              ? { symbol: 'none' as const, size: Number((style.symbol[0] as { size?: unknown })?.size) || 6 }
-              : { size: Number((style?.series && Array.isArray(style.series) ? (style.series[0] as { symbolSize?: unknown })?.symbolSize : undefined)) || 6 },
-        }))
-      : [];
-
-    return {
-      id: `chart-${index}`,
-      type: 'chart',
-      chart: {
-        type: chartType,
-        title: titleText,
-        categories,
-        series: sourceSeries.length
-          ? sourceSeries.map((series) =>
-              isPieChart
-                ? {
-                    ...series,
-                    pointColors: palette.length ? palette : undefined,
-                    pointStyles: piePointStyles,
-                  }
-                : series,
-            )
-          : [
-              {
-                name: 'Series 1',
-                values: rows.map((row) => Number(row[1] ?? 0) || 0),
-                type: isPieChart ? ('pie' as const) : ('line' as const),
-                pointColors: palette.length ? palette : undefined,
-                pointStyles: piePointStyles,
-              },
-            ],
-        showLegend: showLegend !== false,
-        legendPosition,
-        legendStyle,
-        showDataLabels,
-        dataLabels: {
-          position: labelPosition,
-          separator: labelSeparator,
-          showVal: labelShowVal,
-          showCatName: labelShowCatName,
-          showSerName: labelShowSerName,
-          showPercent: labelShowPercent,
-          showLeaderLines: labelShowLeaderLines,
-        },
-        holeSize:
-          chartType === 'doughnut'
-            ? (() => {
-                const parsed = readPercent(radius?.[0]);
-                return Number.isFinite(parsed) ? parsed : undefined;
-              })()
-            : undefined,
-        radius: roseType ? radius : undefined,
-        roseType,
-        startAngle:
-          isPieChart && Number.isFinite(Number(style?.startAngle))
-            ? Number(style?.startAngle)
-            : isPieChart
-              ? 0
-              : undefined,
-        snapshotSrc,
-      },
-      chartId: relId,
-      chartPath: webExtensionPath,
-      x,
-      y,
-      width,
-      height,
-    };
-  }
-
-  if (dschart && typeof dschart === 'object' && typeof properties.dschart_type === 'string' && properties.dschart_type.toLowerCase() === 'map') {
-    const chartJson = mapData && typeof mapData === 'object' ? mapData : undefined;
-    const table = Array.isArray(chartJson?.data) && Array.isArray(chartJson.data[0]) ? chartJson.data[0] : undefined;
-    if (!table || table.length < 2) return undefined;
-
-    const rows = table.slice(1).filter((row): row is unknown[] => Array.isArray(row));
-    const categories = rows.map((row) => decodeMojibake(String(row[0] ?? '').trim())).filter(Boolean);
-    const valueIndex = 1;
-    const header = table[0];
-    const tierIndex = Array.isArray(header) && header.length > 2 ? 2 : undefined;
-    const seriesName = Array.isArray(header) && typeof header[valueIndex] === 'string'
-      ? decodeMojibake(header[valueIndex])
-      : 'Series 1';
-    const colors = collectChartColors(chartStyle, 'fill');
-    const tiers = tierIndex !== undefined
-      ? rows.map((row) => decodeMojibake(String(row[tierIndex] ?? '').trim()))
-      : [];
-    const tierNames = Array.from(new Set(tiers.filter(Boolean)));
-    const pointColors = tierNames.length
-      ? tiers.map((tier) => colors[tierNames.indexOf(tier)]).filter((color): color is string => Boolean(color))
-      : colors;
-
-    return {
-      id: `chart-${index}`,
-      type: 'chart',
-      chart: {
-        type: 'map',
-        title: titleText,
-        categories,
-        series: [
-          {
-            name: seriesName,
-            values: rows.map((row) => Number(row[valueIndex] ?? 0) || 0),
-            type: 'map' as const,
-            pointColors: pointColors.length ? pointColors : undefined,
-            pointLabels: tiers.length ? tiers : undefined,
-          },
-        ],
-        showLegend: showLegend !== false,
-        legendPosition,
-        legendStyle,
-        showDataLabels,
-        mapSeriesName: seriesName,
-        mapName: 'china',
-        mapGeoJsonUrl: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
-        mapRegion:
-          chartStyle?.mapRegion && typeof chartStyle.mapRegion === 'object'
-            ? decodeMojibake(
-                String(
-                  (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).city ||
-                    (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).province ||
-                    (chartStyle.mapRegion as { country?: unknown; province?: unknown; city?: unknown }).country ||
-                    '',
-                ),
-              )
-            : undefined,
-        snapshotSrc,
-      },
-      chartId: relId,
-      chartPath: webExtensionPath,
-      x,
-      y,
-      width,
-      height,
-    };
-  }
-
-  return undefined;
+  return {
+    id: `chart-${index}`,
+    type: 'chart',
+    chart,
+    chartId: relId,
+    chartPath: webExtensionPath,
+    x: emuValue(off, 'x') ?? 0,
+    y: emuValue(off, 'y') ?? 0,
+    width: emuValue(ext, 'cx') ?? 0,
+    height: emuValue(ext, 'cy') ?? 0,
+  };
 }
 
 function parseChartElement(
@@ -1661,7 +1609,9 @@ function parseChartElement(
   const relId = attr(chartNode, 'r:id') ?? attr(chartNode, 'id');
   const target = relId ? rels[relId] : undefined;
   const chartPath = resolveXmlTarget(target, packageState);
-  const xml = chartPath ? (packageState.entries.get(chartPath) as string | undefined) : undefined;
+  const xml = chartPath
+    ? (packageState.entries.get(chartPath) as string | undefined)
+    : undefined;
   if (!xml) return undefined;
 
   const chart = parseOfficeChartXml(xml, theme);
@@ -1697,8 +1647,14 @@ function parseTableCellText(cellNode: Element, theme: ThemeModel) {
       if (child.localName === 'r' || child.localName === 'fld') {
         const runProps = childByLocalName(child, 'rPr');
         runs.push({
-          text: textContent(childByLocalName(child, 't')) || child.textContent || '',
-          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
+          text:
+            textContent(childByLocalName(child, 't')) ||
+            child.textContent ||
+            '',
+          style: mergeTextStyles(
+            defaultRunStyle,
+            readDefaultRunStyle(runProps, theme),
+          ),
         });
         return;
       }
@@ -1707,7 +1663,10 @@ function parseTableCellText(cellNode: Element, theme: ThemeModel) {
         const runProps = childByLocalName(child, 'rPr');
         runs.push({
           text: '\n',
-          style: mergeTextStyles(defaultRunStyle, readDefaultRunStyle(runProps, theme)),
+          style: mergeTextStyles(
+            defaultRunStyle,
+            readDefaultRunStyle(runProps, theme),
+          ),
         });
       }
     });
@@ -1726,7 +1685,9 @@ function parseTableCellText(cellNode: Element, theme: ThemeModel) {
   const text = paragraphs
     .map((paragraph) => paragraph.runs.map((run) => run.text).join(''))
     .join('\n');
-  const firstRunStyle = paragraphs.flatMap((paragraph) => paragraph.runs).find(Boolean)?.style;
+  const firstRunStyle = paragraphs
+    .flatMap((paragraph) => paragraph.runs)
+    .find(Boolean)?.style;
 
   return { text, paragraphs, firstRunStyle };
 }
@@ -1768,7 +1729,8 @@ function resolveTableCellStyle(
   const isFirstRow = tableFlag(tblPr, 'firstRow') && rowIndex === 0;
   const isLastRow = tableFlag(tblPr, 'lastRow') && rowIndex === rowCount - 1;
   const isFirstCol = tableFlag(tblPr, 'firstCol') && columnIndex === 0;
-  const isLastCol = tableFlag(tblPr, 'lastCol') && columnIndex === columnCount - 1;
+  const isLastCol =
+    tableFlag(tblPr, 'lastCol') && columnIndex === columnCount - 1;
   const bandRowOffset = tableFlag(tblPr, 'firstRow') ? 1 : 0;
   const bandColOffset = tableFlag(tblPr, 'firstCol') ? 1 : 0;
   const rowBand =
@@ -1795,7 +1757,12 @@ function resolveTableCellStyle(
   );
 }
 
-function parseTableElement(node: Element, index: number, theme: ThemeModel, tableStyles?: TableStyleMap): TableElement {
+function parseTableElement(
+  node: Element,
+  index: number,
+  theme: ThemeModel,
+  tableStyles?: TableStyleMap,
+): TableElement {
   const xfrm = childByLocalName(node, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
   const ext = childByLocalName(xfrm, 'ext');
@@ -1803,49 +1770,77 @@ function parseTableElement(node: Element, index: number, theme: ThemeModel, tabl
   const tblPr = childByLocalName(tbl, 'tblPr');
   const styleId = textContent(childByLocalName(tblPr, 'tableStyleId')).trim();
   const tableStyle = styleId ? tableStyles?.[styleId] : undefined;
-  const columnWidths = childrenByLocalName(childByLocalName(tbl, 'tblGrid'), 'gridCol')
-    .map((col) => emuValue(col, 'w') ?? 0);
+  const columnWidths = childrenByLocalName(
+    childByLocalName(tbl, 'tblGrid'),
+    'gridCol',
+  ).map((col) => emuValue(col, 'w') ?? 0);
   const rowNodes = childrenByLocalName(tbl, 'tr');
   const rowHeights = rowNodes.map((rowNode) => emuValue(rowNode, 'h') ?? 0);
   const rows: TableCell[][] = rowNodes.map((rowNode, rowIndex) =>
-    childrenByLocalName(rowNode, 'tc').map((cellNode, columnIndex): TableCell => {
-      const tcPr = childByLocalName(cellNode, 'tcPr');
-      const fillNode = childByLocalName(tcPr, 'solidFill') ?? childByLocalName(tcPr, 'gradFill');
-      const { text, paragraphs, firstRunStyle } = parseTableCellText(cellNode, theme);
-      const explicitBorder = parseTableBorder(tcPr, theme);
-      const styled = resolveTableCellStyle(
-        tableStyle,
-        tblPr,
-        rowIndex,
-        columnIndex,
-        rowNodes.length,
-        columnWidths.length,
-      );
-      const explicitBackgroundColor = childByLocalName(tcPr, 'noFill') ? null : parseColorNode(fillNode, theme);
-      const explicitBackgroundOpacity = childByLocalName(tcPr, 'noFill') ? undefined : parseAlphaNode(fillNode);
-      return {
-        text,
-        paragraphs,
-        style: mergeTextStyles(styled.text, firstRunStyle),
-        backgroundColor: explicitBackgroundColor !== undefined ? explicitBackgroundColor : styled.backgroundColor ?? undefined,
-        backgroundOpacity: explicitBackgroundOpacity !== undefined ? explicitBackgroundOpacity : styled.backgroundOpacity,
-        borderColor: explicitBorder.borderColor !== undefined ? explicitBorder.borderColor : styled.borderColor ?? undefined,
-        borderOpacity: explicitBorder.borderOpacity !== undefined ? explicitBorder.borderOpacity : styled.borderOpacity,
-        borderWidth: explicitBorder.borderWidth !== undefined ? explicitBorder.borderWidth : styled.borderWidth,
-        margins: {
-          left: emuValue(tcPr, 'marL'),
-          right: emuValue(tcPr, 'marR'),
-          top: emuValue(tcPr, 'marT'),
-          bottom: emuValue(tcPr, 'marB'),
-        },
-        verticalAlign:
-          attr(tcPr, 'anchor') === 'b'
-            ? 'bottom'
-            : attr(tcPr, 'anchor') === 'ctr'
+    childrenByLocalName(rowNode, 'tc').map(
+      (cellNode, columnIndex): TableCell => {
+        const tcPr = childByLocalName(cellNode, 'tcPr');
+        const fillNode =
+          childByLocalName(tcPr, 'solidFill') ??
+          childByLocalName(tcPr, 'gradFill');
+        const { text, paragraphs, firstRunStyle } = parseTableCellText(
+          cellNode,
+          theme,
+        );
+        const explicitBorder = parseTableBorder(tcPr, theme);
+        const styled = resolveTableCellStyle(
+          tableStyle,
+          tblPr,
+          rowIndex,
+          columnIndex,
+          rowNodes.length,
+          columnWidths.length,
+        );
+        const explicitBackgroundColor = childByLocalName(tcPr, 'noFill')
+          ? null
+          : parseColorNode(fillNode, theme);
+        const explicitBackgroundOpacity = childByLocalName(tcPr, 'noFill')
+          ? undefined
+          : parseAlphaNode(fillNode);
+        return {
+          text,
+          paragraphs,
+          style: mergeTextStyles(styled.text, firstRunStyle),
+          backgroundColor:
+            explicitBackgroundColor !== undefined
+              ? explicitBackgroundColor
+              : styled.backgroundColor ?? undefined,
+          backgroundOpacity:
+            explicitBackgroundOpacity !== undefined
+              ? explicitBackgroundOpacity
+              : styled.backgroundOpacity,
+          borderColor:
+            explicitBorder.borderColor !== undefined
+              ? explicitBorder.borderColor
+              : styled.borderColor ?? undefined,
+          borderOpacity:
+            explicitBorder.borderOpacity !== undefined
+              ? explicitBorder.borderOpacity
+              : styled.borderOpacity,
+          borderWidth:
+            explicitBorder.borderWidth !== undefined
+              ? explicitBorder.borderWidth
+              : styled.borderWidth,
+          margins: {
+            left: emuValue(tcPr, 'marL'),
+            right: emuValue(tcPr, 'marR'),
+            top: emuValue(tcPr, 'marT'),
+            bottom: emuValue(tcPr, 'marB'),
+          },
+          verticalAlign:
+            attr(tcPr, 'anchor') === 'b'
+              ? 'bottom'
+              : attr(tcPr, 'anchor') === 'ctr'
               ? 'middle'
               : 'top',
-      };
-    }),
+        };
+      },
+    ),
   );
 
   return {
@@ -1861,7 +1856,10 @@ function parseTableElement(node: Element, index: number, theme: ThemeModel, tabl
   };
 }
 
-function parseUnsupportedElement(index: number, reason: string): UnsupportedElement {
+function parseUnsupportedElement(
+  index: number,
+  reason: string,
+): UnsupportedElement {
   return {
     id: `unsupported-${index}`,
     type: 'unsupported',
@@ -1877,10 +1875,16 @@ function findLayoutForSlide(
   slideRels: Record<string, string>,
   layoutDefinitions: LayoutDefinition[],
 ) {
-  const layoutTarget = Object.values(slideRels).find((target) => target.includes('slideLayout'));
+  const layoutTarget = Object.values(slideRels).find((target) =>
+    target.includes('slideLayout'),
+  );
   if (!layoutTarget) return undefined;
-  const layoutPath = layoutTarget.startsWith('ppt/') ? layoutTarget : `ppt/${layoutTarget.replace(/^\.\.\//, '')}`;
-  return layoutDefinitions.find((layout) => layout.path === layoutTarget || layout.path === layoutPath);
+  const layoutPath = layoutTarget.startsWith('ppt/')
+    ? layoutTarget
+    : `ppt/${layoutTarget.replace(/^\.\.\//, '')}`;
+  return layoutDefinitions.find(
+    (layout) => layout.path === layoutTarget || layout.path === layoutPath,
+  );
 }
 
 function parseSlideXml(
@@ -1905,26 +1909,55 @@ function parseSlideXml(
   const master = layout
     ? masterDefinitions.find((item) => item.path === layout.masterPath)
     : masterDefinitions[0];
-  const slideBackground = readSlideBackground(bg, theme, packageState, slideRels);
-  const background = slideBackground?.fill || slideBackground?.imageRef
-    ? slideBackground
-    : layout?.background?.fill || layout?.background?.imageRef
+  const slideBackground = readSlideBackground(
+    bg,
+    theme,
+    packageState,
+    slideRels,
+  );
+  const background =
+    slideBackground?.fill || slideBackground?.imageRef
+      ? slideBackground
+      : layout?.background?.fill || layout?.background?.imageRef
       ? layout.background
       : master?.background;
 
-  const elements: SlideElement[] = [...(master?.elements ?? []), ...(layout?.elements ?? [])];
+  const elements: SlideElement[] = [
+    ...(master?.elements ?? []),
+    ...(layout?.elements ?? []),
+  ];
   const placeholderStyles = { ...(master?.placeholders ?? {}) };
   Object.keys(layout?.placeholders ?? {}).forEach((key) => {
-    placeholderStyles[key] = mergePlaceholder(key, layout?.placeholders ?? {}, master?.placeholders ?? {});
+    placeholderStyles[key] = mergePlaceholder(
+      key,
+      layout?.placeholders ?? {},
+      master?.placeholders ?? {},
+    );
   });
   Object.entries(master?.textPresets ?? {}).forEach(([key, preset]) => {
-    placeholderStyles[key] = mergePlaceholderStyle(placeholderStyles[key], preset);
+    placeholderStyles[key] = mergePlaceholderStyle(
+      placeholderStyles[key],
+      preset,
+    );
   });
   Object.entries(layout?.textPresets ?? {}).forEach(([key, preset]) => {
-    placeholderStyles[key] = mergePlaceholderStyle(placeholderStyles[key], preset);
+    placeholderStyles[key] = mergePlaceholderStyle(
+      placeholderStyles[key],
+      preset,
+    );
   });
 
-  elements.push(...parseVisualTree(spTree, theme, packageState, slideRels, `slide-${index}`, placeholderStyles, tableStyles));
+  elements.push(
+    ...parseVisualTree(
+      spTree,
+      theme,
+      packageState,
+      slideRels,
+      `slide-${index}`,
+      placeholderStyles,
+      tableStyles,
+    ),
+  );
 
   return {
     id: `slide-${index}`,
@@ -1943,22 +1976,39 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
   const presentationXml = readXml(entries, 'ppt/presentation.xml');
   const presentationDoc = parseXml(presentationXml);
   const themeXml = readXml(entries, 'ppt/theme/theme1.xml');
-  const theme = themeXml ? readTheme(themeXml) : { colorScheme: {}, fontScheme: {}, colorMap: {} };
-  const tableStyles = readTableStyles(readXml(entries, 'ppt/tableStyles.xml'), theme);
-  const size = presentationXml ? readPresentationSize(presentationXml) : { width: 960, height: 540 };
-  const presentationRels = packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
-  const slideIdList = descendantByLocalName(presentationDoc.documentElement, 'sldIdLst');
+  const theme = themeXml
+    ? readTheme(themeXml)
+    : { colorScheme: {}, fontScheme: {}, colorMap: {} };
+  const tableStyles = readTableStyles(
+    readXml(entries, 'ppt/tableStyles.xml'),
+    theme,
+  );
+  const size = presentationXml
+    ? readPresentationSize(presentationXml)
+    : { width: 960, height: 540 };
+  const presentationRels =
+    packageState.relationships['ppt/_rels/presentation.xml.rels'] ?? {};
+  const slideIdList = descendantByLocalName(
+    presentationDoc.documentElement,
+    'sldIdLst',
+  );
   const slideIds = childrenByLocalName(slideIdList, 'sldId');
-  const { masterDefinitions, masterLayoutDefinitions } = readPresentationLayouts(entries, packageState, theme, tableStyles);
+  const { masterDefinitions, masterLayoutDefinitions } =
+    readPresentationLayouts(entries, packageState, theme, tableStyles);
   const layoutDefinitions = Object.values(masterLayoutDefinitions).flat();
   const slides: SlideModel[] = [];
 
   slideIds.forEach((node, index) => {
     const relId = attr(node, 'r:id');
     const relTarget = relId ? presentationRels[relId] : undefined;
-    const relPath = relTarget ? relTarget.replace(/^ppt\//, '') : `slides/slide${index + 1}.xml`;
+    const relPath = relTarget
+      ? relTarget.replace(/^ppt\//, '')
+      : `slides/slide${index + 1}.xml`;
     const slidePath = relTarget ?? `ppt/${relPath}`;
-    const relsPath = `ppt/${relPath.replace(/^slides\//, 'slides/_rels/')}.rels`;
+    const relsPath = `ppt/${relPath.replace(
+      /^slides\//,
+      'slides/_rels/',
+    )}.rels`;
     slides.push(
       parseSlideXml(
         readXml(entries, slidePath),

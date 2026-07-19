@@ -1,6 +1,6 @@
 // DocParagraphBlock 渲染 DOC 段落块，并应用推断出的标题、正文和文字样式。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocParagraphBlock as DocParagraphBlockModel } from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
@@ -25,7 +25,11 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
 
   return (
     <p className="oxv-doc-paragraph" style={paragraphStyle}>
-      <DocInlineContent inlines={block.inlines} fallback={block.text} preserveBlockTypography={isTitle || isHeading} />
+      <DocInlineContent
+        inlines={block.inlines}
+        fallback={block.text}
+        preserveBlockTypography={isTitle || isHeading}
+      />
     </p>
   );
 }

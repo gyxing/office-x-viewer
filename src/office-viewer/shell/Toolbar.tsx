@@ -1,16 +1,6 @@
 // OfficeToolbar 提供选择文件、翻页、缩放、全屏等 OfficeViewer 顶部通用操作。
-import {
-  FileExcelOutlined,
-  FilePptOutlined,
-  FileWordOutlined,
-  FullscreenOutlined,
-  LeftOutlined,
-  RightOutlined,
-  ZoomInOutlined,
-  ZoomOutOutlined,
-} from '@ant-design/icons';
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
-import { memo, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { PreviewKind } from '../services/preview';
 import {
   OFFICE_DEFAULT_ZOOM,
@@ -18,7 +8,16 @@ import {
   OFFICE_MIN_ZOOM,
   OFFICE_ZOOM_LEVELS,
 } from './constants';
-
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FileExcelIcon,
+  FilePptIcon,
+  FileWordIcon,
+  FullscreenIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+} from './icons';
 const OFFICE_FILE_ACCEPT = '.pptx,.xlsx,.docx,.doc,.wps';
 
 type OfficeToolbarProps = {
@@ -35,13 +34,15 @@ type OfficeToolbarProps = {
   onZoomIn: () => void;
   onZoomChange: (zoom: number) => void;
   onResetZoom: () => void;
-  onFullscreen?: () => void;
+  isFullscreen: boolean;
+  fullscreenSupported: boolean;
+  onFullscreen: () => void;
 };
 
 function getPreviewIcon(kind: PreviewKind) {
-  if (kind === 'xlsx') return <FileExcelOutlined />;
-  if (kind === 'docx' || kind === 'doc') return <FileWordOutlined />;
-  return <FilePptOutlined />;
+  if (kind === 'xlsx') return <FileExcelIcon />;
+  if (kind === 'docx' || kind === 'doc') return <FileWordIcon />;
+  return <FilePptIcon />;
 }
 
 function OfficeToolbarComponent({
@@ -58,9 +59,14 @@ function OfficeToolbarComponent({
   onZoomIn,
   onZoomChange,
   onResetZoom,
+  isFullscreen,
+  fullscreenSupported,
   onFullscreen,
 }: OfficeToolbarProps) {
-  const zoomOptions = useMemo(() => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })), []);
+  const zoomOptions = useMemo(
+    () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
+    [],
+  );
 
   return (
     <div className="oxv-office-toolbar">
@@ -80,29 +86,40 @@ function OfficeToolbarComponent({
         </Upload>
         <Tooltip title="上一页">
           <Button
-            icon={<LeftOutlined />}
-            disabled={previewKind !== 'pptx' || !hasDocument || !canGoPreviousSlide}
+            aria-label="上一页"
+            icon={<ChevronLeftIcon />}
+            disabled={
+              previewKind !== 'pptx' || !hasDocument || !canGoPreviousSlide
+            }
             onClick={onPreviousSlide}
           />
         </Tooltip>
         <Tooltip title="下一页">
           <Button
-            icon={<RightOutlined />}
+            aria-label="下一页"
+            icon={<ChevronRightIcon />}
             disabled={previewKind !== 'pptx' || !hasDocument || !canGoNextSlide}
             onClick={onNextSlide}
           />
         </Tooltip>
-        <Select value={zoom} className="oxv-office-toolbar__zoom" onChange={onZoomChange} options={zoomOptions} />
+        <Select
+          value={zoom}
+          className="oxv-office-toolbar__zoom"
+          onChange={onZoomChange}
+          options={zoomOptions}
+        />
         <Tooltip title="缩小">
           <Button
-            icon={<ZoomOutOutlined />}
+            aria-label="缩小"
+            icon={<ZoomOutIcon />}
             disabled={!hasDocument || zoom <= OFFICE_MIN_ZOOM}
             onClick={onZoomOut}
           />
         </Tooltip>
         <Tooltip title="放大">
           <Button
-            icon={<ZoomInOutlined />}
+            aria-label="放大"
+            icon={<ZoomInIcon />}
             disabled={!hasDocument || zoom >= OFFICE_MAX_ZOOM}
             onClick={onZoomIn}
           />
@@ -110,8 +127,13 @@ function OfficeToolbarComponent({
         <Button disabled={!hasDocument} onClick={onResetZoom}>
           {OFFICE_DEFAULT_ZOOM}%
         </Button>
-        <Button icon={<FullscreenOutlined />} disabled={!hasDocument || !onFullscreen} onClick={onFullscreen}>
-          全屏
+        <Button
+          aria-label={isFullscreen ? '退出全屏' : '全屏'}
+          icon={<FullscreenIcon />}
+          disabled={!hasDocument || !fullscreenSupported}
+          onClick={onFullscreen}
+        >
+          {isFullscreen ? '退出全屏' : '全屏'}
         </Button>
       </Space>
     </div>
@@ -119,4 +141,3 @@ function OfficeToolbarComponent({
 }
 
 export const OfficeToolbar = memo(OfficeToolbarComponent);
-

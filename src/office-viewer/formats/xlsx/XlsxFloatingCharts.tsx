@@ -1,6 +1,6 @@
 // XlsxFloatingCharts 渲染锚定在工作表画布上的浮动图表。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { XlsxChart } from '../../services/xlsx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 
@@ -21,7 +21,12 @@ function XlsxFloatingChart({ chart }: { chart: XlsxChart }) {
 
   return (
     <div className="oxv-xlsx-sheet-grid__floating-chart" style={chartStyle}>
-      <OfficeChartView chart={chart.chart} width={chart.width} height={chart.height} zoom={100} />
+      <OfficeChartView
+        chart={chart.chart}
+        width={chart.width}
+        height={chart.height}
+        zoom={100}
+      />
     </div>
   );
 }

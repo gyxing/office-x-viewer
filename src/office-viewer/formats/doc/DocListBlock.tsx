@@ -1,6 +1,6 @@
 // DocListBlock 渲染 DOC 有序或无序列表块。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocListBlock as DocListBlockModel } from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';

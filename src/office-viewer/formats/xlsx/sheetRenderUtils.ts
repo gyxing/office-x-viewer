@@ -1,6 +1,10 @@
 // sheetRenderUtils 提供 XLSX 工作表渲染所需的样式转换和画布尺寸计算。
 import type { CSSProperties } from 'react';
-import type { XlsxCell, XlsxCellStyle, XlsxSheet } from '../../services/xlsx/types';
+import type {
+  XlsxCell,
+  XlsxCellStyle,
+  XlsxSheet,
+} from '../../services/xlsx/types';
 
 // 单元格字体、填充、边框等来自工作簿样式表，只能在运行时转成 CSS，不能放到 Less。
 export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
@@ -19,7 +23,9 @@ export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
     overflowWrap: style.wrapText ? 'anywhere' : undefined,
     wordBreak: style.wrapText ? 'break-word' : undefined,
   };
-  return Object.fromEntries(Object.entries(css).filter(([, value]) => value !== undefined)) as CSSProperties;
+  return Object.fromEntries(
+    Object.entries(css).filter(([, value]) => value !== undefined),
+  ) as CSSProperties;
 }
 
 export function isHighlightedXlsxCell(style?: XlsxCellStyle) {
@@ -28,7 +34,8 @@ export function isHighlightedXlsxCell(style?: XlsxCellStyle) {
 
 // 画布需要同时覆盖单元格区域和浮动图片/图表，否则滚动区域会截断绝对定位元素。
 export function getXlsxSheetMetrics(sheet: XlsxSheet) {
-  const tableWidth = 48 + sheet.columns.reduce((sum, column) => sum + column.width, 0);
+  const tableWidth =
+    48 + sheet.columns.reduce((sum, column) => sum + column.width, 0);
   const tableHeight = 28 + sheet.rows.reduce((sum, row) => sum + row.height, 0);
   return {
     tableWidth,

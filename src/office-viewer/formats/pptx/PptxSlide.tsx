@@ -1,6 +1,6 @@
 // PptxSlide 按 PPTX 解析模型渲染单页幻灯片背景、图形、文本、图片、表格和图表。
-import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { SlideElement, SlideModel } from '../../services/pptx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { ImageRenderer } from './renderers/ImageRenderer';
@@ -35,7 +35,12 @@ const ChartFrame = memo(function ChartFrame({
 
   return (
     <div className="oxv-pptx-chart-frame" style={frameStyle}>
-      <OfficeChartView chart={element.chart} width={element.width} height={element.height} zoom={zoom} />
+      <OfficeChartView
+        chart={element.chart}
+        width={element.width}
+        height={element.height}
+        zoom={zoom}
+      />
     </div>
   );
 });
@@ -56,10 +61,19 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   );
   const backgroundStyle = useMemo<CSSProperties>(
     () => ({
-      background: colorWithOpacity(slide.background?.fill ?? '#fff', slide.background?.fillOpacity),
-      backgroundImage: slide.background?.imageRef ? `url(${slide.background.imageRef})` : undefined,
+      background: colorWithOpacity(
+        slide.background?.fill ?? '#fff',
+        slide.background?.fillOpacity,
+      ),
+      backgroundImage: slide.background?.imageRef
+        ? `url(${slide.background.imageRef})`
+        : undefined,
     }),
-    [slide.background?.fill, slide.background?.fillOpacity, slide.background?.imageRef],
+    [
+      slide.background?.fill,
+      slide.background?.fillOpacity,
+      slide.background?.imageRef,
+    ],
   );
 
   return (
@@ -69,15 +83,29 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
         {slide.elements.map((element) => {
           switch (element.type) {
             case 'text':
-              return <TextRenderer key={element.id} element={element} renderKey={slideRenderKey} />;
+              return (
+                <TextRenderer
+                  key={element.id}
+                  element={element}
+                  renderKey={slideRenderKey}
+                />
+              );
             case 'shape':
-              return <ShapeRenderer key={element.id} element={element} renderKey={slideRenderKey} />;
+              return (
+                <ShapeRenderer
+                  key={element.id}
+                  element={element}
+                  renderKey={slideRenderKey}
+                />
+              );
             case 'image':
               return <ImageRenderer key={element.id} element={element} />;
             case 'table':
               return <TableRenderer key={element.id} element={element} />;
             case 'chart':
-              return <ChartFrame key={element.id} element={element} zoom={zoom} />;
+              return (
+                <ChartFrame key={element.id} element={element} zoom={zoom} />
+              );
             case 'unsupported':
               return <UnsupportedRenderer key={element.id} element={element} />;
             default:

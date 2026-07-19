@@ -58,9 +58,11 @@ function readFontScheme(fontSchemeNode: Element | null | undefined) {
     const cs = childByLocalName(node, 'cs');
     const eastAsia =
       attr(ea, 'typeface') ||
-      childrenByLocalName(node, 'font').find((font) =>
-        ['Hans', 'Hant', 'Jpan', 'Hang'].includes(attr(font, 'script') ?? ''),
-      )?.getAttribute('typeface');
+      childrenByLocalName(node, 'font')
+        .find((font) =>
+          ['Hans', 'Hant', 'Jpan', 'Hang'].includes(attr(font, 'script') ?? ''),
+        )
+        ?.getAttribute('typeface');
     const value = [eastAsia, attr(latin, 'typeface'), attr(cs, 'typeface')]
       .filter(Boolean)
       .join(', ');
@@ -74,18 +76,23 @@ export function readOfficeTheme(xml?: string): OfficeTheme {
   if (!xml) return DEFAULT_OFFICE_THEME;
 
   const doc = parseXml(xml);
-  const colorScheme: Record<string, string> = { ...DEFAULT_OFFICE_THEME.colorScheme };
+  const colorScheme: Record<string, string> = {
+    ...DEFAULT_OFFICE_THEME.colorScheme,
+  };
   const themeElements = childByLocalName(doc.documentElement, 'themeElements');
   const clrScheme = childByLocalName(themeElements, 'clrScheme');
-  const fontScheme = readFontScheme(childByLocalName(themeElements, 'fontScheme'));
+  const fontScheme = readFontScheme(
+    childByLocalName(themeElements, 'fontScheme'),
+  );
 
   Object.keys(DEFAULT_OFFICE_THEME.colorScheme).forEach((name) => {
     const node = childByLocalName(clrScheme, name);
     const child = node?.firstElementChild;
     const childName = child?.localName.split(':').pop()?.toLowerCase();
-    const value = childName === 'sysclr'
-      ? attr(child, 'lastClr') ?? attr(child, 'val')
-      : attr(child, 'val') ?? attr(child, 'lastClr');
+    const value =
+      childName === 'sysclr'
+        ? attr(child, 'lastClr') ?? attr(child, 'val')
+        : attr(child, 'val') ?? attr(child, 'lastClr');
     if (value) colorScheme[name] = value;
   });
 
@@ -96,7 +103,10 @@ export function readOfficeTheme(xml?: string): OfficeTheme {
   };
 }
 
-export function resolveOfficeThemeColor(value: string | undefined, theme: OfficeTheme = DEFAULT_OFFICE_THEME) {
+export function resolveOfficeThemeColor(
+  value: string | undefined,
+  theme: OfficeTheme = DEFAULT_OFFICE_THEME,
+) {
   if (!value) return undefined;
 
   const direct = toHexColor(value);

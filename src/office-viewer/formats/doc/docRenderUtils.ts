@@ -48,7 +48,10 @@ export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
   };
 }
 
-export function inlineStyleToCss(style?: DocTextStyle, options?: { preserveBlockTypography?: boolean }): CSSProperties {
+export function inlineStyleToCss(
+  style?: DocTextStyle,
+  options?: { preserveBlockTypography?: boolean },
+): CSSProperties {
   const css = docTextStyleToCss(style);
   // 行内片段不能继承段落级缩进/间距，否则会把整段排版撑乱。
   delete css.textAlign;
@@ -75,13 +78,21 @@ export function imagesFromImageOnlyParagraph(block: DocBlock) {
   // 二进制 DOC 没有稳定的图片锚点模型，这里用“无文字且全是图片”的段落作为图片布局信号。
   if (block.type !== 'paragraph' || block.text.trim()) return [];
   const inlines = block.inlines ?? [];
-  const hasVisibleText = inlines.some((inline) => inline.type === 'text' && inline.text.trim());
-  const images = inlines.flatMap((inline) => (inline.type === 'image' ? [inline.image] : []));
+  const hasVisibleText = inlines.some(
+    (inline) => inline.type === 'text' && inline.text.trim(),
+  );
+  const images = inlines.flatMap((inline) =>
+    inline.type === 'image' ? [inline.image] : [],
+  );
   if (!images.length || hasVisibleText) return [];
   return images;
 }
 
-export function canShareImageRow(left: DocImage, right: DocImage, contentWidth: number) {
+export function canShareImageRow(
+  left: DocImage,
+  right: DocImage,
+  contentWidth: number,
+) {
   if (!left.width || !right.width) return false;
   // 只让较小图片并排，避免大图被压缩后影响文档可读性。
   const maxSmallImageWidth = Math.min(300, contentWidth * 0.55);
@@ -112,7 +123,10 @@ export function imageRows(images: DocImage[], contentWidth: number) {
 }
 
 function weightedTextLength(text: string) {
-  return Array.from(text).reduce((sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 1 : 0.55), 0);
+  return Array.from(text).reduce(
+    (sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 1 : 0.55),
+    0,
+  );
 }
 
 function estimateLineCount(text: string, width: number, fontSize: number) {
@@ -121,24 +135,37 @@ function estimateLineCount(text: string, width: number, fontSize: number) {
   return Math.max(1, Math.ceil(weightedLength / charsPerLine));
 }
 
-function estimateParagraphTextHeight(block: DocParagraphBlock, contentWidth: number) {
+function estimateParagraphTextHeight(
+  block: DocParagraphBlock,
+  contentWidth: number,
+) {
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
-  const fontSize = block.style?.fontSize ?? (isTitle ? 22 : isHeading ? 16 : 14);
-  const lineHeight = block.style?.lineHeight ?? (isTitle ? 1.45 : isHeading ? 1.65 : 1.8);
+  const fontSize =
+    block.style?.fontSize ?? (isTitle ? 22 : isHeading ? 16 : 14);
+  const lineHeight =
+    block.style?.lineHeight ?? (isTitle ? 1.45 : isHeading ? 1.65 : 1.8);
   const defaultSpacingAfter = isTitle ? 18 : isHeading ? 14 : 12;
   const spacingBefore = block.style?.spacingBefore ?? 0;
   const spacingAfter = block.style?.spacingAfter ?? defaultSpacingAfter;
   const padding =
-    (block.style?.paddingTop ?? 0) +
-    (block.style?.paddingBottom ?? 0);
+    (block.style?.paddingTop ?? 0) + (block.style?.paddingBottom ?? 0);
   const lines = estimateLineCount(block.text || ' ', contentWidth, fontSize);
 
-  return Math.max(18, lines * fontSize * lineHeight + spacingBefore + spacingAfter + padding);
+  return Math.max(
+    18,
+    lines * fontSize * lineHeight + spacingBefore + spacingAfter + padding,
+  );
 }
 
-function estimateImageHeight(image: DocImage, contentWidth: number, rowLength: number) {
-  const preferredWidth = image.width ? Math.min(image.width, contentWidth) : contentWidth;
+function estimateImageHeight(
+  image: DocImage,
+  contentWidth: number,
+  rowLength: number,
+) {
+  const preferredWidth = image.width
+    ? Math.min(image.width, contentWidth)
+    : contentWidth;
   const renderedWidth =
     rowLength > 1 && image.width
       ? Math.min(image.width, (contentWidth - DOC_IMAGE_ROW_GAP) / rowLength)
@@ -152,15 +179,22 @@ function estimateImageHeight(image: DocImage, contentWidth: number, rowLength: n
 }
 
 function estimateImageRowHeight(row: DocImage[], contentWidth: number) {
-  return Math.max(...row.map((image) => estimateImageHeight(image, contentWidth, row.length)), 0);
+  return Math.max(
+    ...row.map((image) => estimateImageHeight(image, contentWidth, row.length)),
+    0,
+  );
 }
 
-function estimateTableHeight(block: Extract<DocBlock, { type: 'table' }>, contentWidth: number) {
+function estimateTableHeight(
+  block: Extract<DocBlock, { type: 'table' }>,
+  contentWidth: number,
+) {
   const columnCount = Math.max(...block.rows.map((row) => row.cells.length), 1);
   const columns = block.columns?.length
     ? block.columns
     : Array.from({ length: columnCount }, () => contentWidth / columnCount);
-  const totalColumns = columns.reduce((sum, width) => sum + width, 0) || contentWidth;
+  const totalColumns =
+    columns.reduce((sum, width) => sum + width, 0) || contentWidth;
 
   const rowHeights = block.rows.map((row) =>
     Math.max(
@@ -168,9 +202,20 @@ function estimateTableHeight(block: Extract<DocBlock, { type: 'table' }>, conten
       ...row.cells.map((cell, cellIndex) => {
         const fontSize = cell.style?.fontSize ?? 13;
         const lineHeight = cell.style?.lineHeight ?? 1.65;
-        const padding = (cell.style?.paddingTop ?? 5) + (cell.style?.paddingBottom ?? 5);
-        const width = cell.width ?? (columns[cellIndex] / totalColumns) * contentWidth;
-        return estimateLineCount(cell.text || ' ', Math.max(48, width - 16), fontSize) * fontSize * lineHeight + padding;
+        const padding =
+          (cell.style?.paddingTop ?? 5) + (cell.style?.paddingBottom ?? 5);
+        const width =
+          cell.width ?? (columns[cellIndex] / totalColumns) * contentWidth;
+        return (
+          estimateLineCount(
+            cell.text || ' ',
+            Math.max(48, width - 16),
+            fontSize,
+          ) *
+            fontSize *
+            lineHeight +
+          padding
+        );
       }),
     ),
   );
@@ -178,11 +223,19 @@ function estimateTableHeight(block: Extract<DocBlock, { type: 'table' }>, conten
   return rowHeights.reduce((sum, height) => sum + height, 0) + 16;
 }
 
-function estimateListHeight(block: Extract<DocBlock, { type: 'list' }>, contentWidth: number) {
+function estimateListHeight(
+  block: Extract<DocBlock, { type: 'list' }>,
+  contentWidth: number,
+) {
   const fontSize = block.style?.fontSize ?? 14;
   const lineHeight = block.style?.lineHeight ?? 1.7;
   const itemHeight = block.items.reduce(
-    (sum, item) => sum + estimateLineCount(item.text || ' ', contentWidth - 24, fontSize) * fontSize * lineHeight + 8,
+    (sum, item) =>
+      sum +
+      estimateLineCount(item.text || ' ', contentWidth - 24, fontSize) *
+        fontSize *
+        lineHeight +
+      8,
     0,
   );
   return itemHeight + 8;
@@ -192,13 +245,25 @@ function estimateBlockHeight(block: DocBlock, contentWidth: number) {
   if (block.type === 'table') return estimateTableHeight(block, contentWidth);
   if (block.type === 'list') return estimateListHeight(block, contentWidth);
 
-  const images = block.inlines?.flatMap((inline) => (inline.type === 'image' ? [inline.image] : [])) ?? [];
-  const imageHeight = images.reduce((sum, image) => sum + estimateImageHeight(image, contentWidth, 1) + 6, 0);
+  const images =
+    block.inlines?.flatMap((inline) =>
+      inline.type === 'image' ? [inline.image] : [],
+    ) ?? [];
+  const imageHeight = images.reduce(
+    (sum, image) => sum + estimateImageHeight(image, contentWidth, 1) + 6,
+    0,
+  );
   return estimateParagraphTextHeight(block, contentWidth) + imageHeight;
 }
 
-function createImageParagraphBlock(id: string, images: DocImage[]): DocParagraphBlock {
-  const inlines: DocTextInline[] = images.map((image) => ({ type: 'image', image }));
+function createImageParagraphBlock(
+  id: string,
+  images: DocImage[],
+): DocParagraphBlock {
+  const inlines: DocTextInline[] = images.map((image) => ({
+    type: 'image',
+    image,
+  }));
   return {
     id,
     type: 'paragraph',
@@ -220,7 +285,10 @@ export function paginateDocBlocks(
 ): PaginatedDocPage[] {
   const contentHeight = Math.max(
     240,
-    page.minHeight - page.marginTop - page.marginBottom - DOC_PAGE_HEIGHT_BUFFER,
+    page.minHeight -
+      page.marginTop -
+      page.marginBottom -
+      DOC_PAGE_HEIGHT_BUFFER,
   );
   const pages: PaginatedDocPage[] = [];
   let currentBlocks: DocBlock[] = [];
@@ -235,7 +303,10 @@ export function paginateDocBlocks(
   };
 
   const appendBlock = (block: DocBlock, estimatedHeight: number) => {
-    if (currentBlocks.length && currentHeight + estimatedHeight > contentHeight) {
+    if (
+      currentBlocks.length &&
+      currentHeight + estimatedHeight > contentHeight
+    ) {
       flushPage();
     }
     currentBlocks.push(block);
@@ -251,7 +322,10 @@ export function paginateDocBlocks(
       if (!pendingImages.length) return;
       syntheticImageIndex += 1;
       appendBlock(
-        createImageParagraphBlock(`doc-image-page-group-${syntheticImageIndex}`, pendingImages),
+        createImageParagraphBlock(
+          `doc-image-page-group-${syntheticImageIndex}`,
+          pendingImages,
+        ),
         pendingHeight,
       );
       pendingImages = [];
@@ -260,8 +334,12 @@ export function paginateDocBlocks(
 
     rows.forEach((row) => {
       const rowHeight =
-        estimateImageRowHeight(row, contentWidth) + (pendingImages.length ? DOC_IMAGE_LAYOUT_ROW_GAP : 0);
-      if (pendingImages.length && currentHeight + pendingHeight + rowHeight > contentHeight) {
+        estimateImageRowHeight(row, contentWidth) +
+        (pendingImages.length ? DOC_IMAGE_LAYOUT_ROW_GAP : 0);
+      if (
+        pendingImages.length &&
+        currentHeight + pendingHeight + rowHeight > contentHeight
+      ) {
         flushImages();
       }
       pendingImages.push(...row);
@@ -273,7 +351,9 @@ export function paginateDocBlocks(
 
   let index = 0;
   while (index < blocks.length) {
-    const imageOnlyParagraphImages = imagesFromImageOnlyParagraph(blocks[index]);
+    const imageOnlyParagraphImages = imagesFromImageOnlyParagraph(
+      blocks[index],
+    );
 
     if (imageOnlyParagraphImages.length) {
       const imageGroup = [...imageOnlyParagraphImages];
@@ -290,7 +370,10 @@ export function paginateDocBlocks(
       continue;
     }
 
-    appendBlock(blocks[index], estimateBlockHeight(blocks[index], contentWidth));
+    appendBlock(
+      blocks[index],
+      estimateBlockHeight(blocks[index], contentWidth),
+    );
     index += 1;
   }
 

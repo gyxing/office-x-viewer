@@ -1,5 +1,5 @@
 // PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
-import { memo } from 'react';
+import React, { memo } from 'react';
 import type { PptxDocument } from '../../services/pptx/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
@@ -13,7 +13,12 @@ type PptxViewerProps = {
   onSelectSlide: (index: number) => void;
 };
 
-function PptxViewerComponent({ document, activeIndex, zoom, onSelectSlide }: PptxViewerProps) {
+function PptxViewerComponent({
+  document,
+  activeIndex,
+  zoom,
+  onSelectSlide,
+}: PptxViewerProps) {
   if (!document?.slides.length) {
     return <OfficeEmpty kind="pptx" />;
   }
@@ -22,8 +27,16 @@ function PptxViewerComponent({ document, activeIndex, zoom, onSelectSlide }: Ppt
 
   return (
     <div className="oxv-pptx-viewer">
-      <PptxThumbnailPane slides={document.slides} activeIndex={activeIndex} onSelectSlide={onSelectSlide} />
-      <PptxSlideViewport slide={currentSlide} activeIndex={activeIndex} zoom={zoom} />
+      <PptxThumbnailPane
+        slides={document.slides}
+        activeIndex={activeIndex}
+        onSelectSlide={onSelectSlide}
+      />
+      <PptxSlideViewport
+        slide={currentSlide}
+        activeIndex={activeIndex}
+        zoom={zoom}
+      />
     </div>
   );
 }

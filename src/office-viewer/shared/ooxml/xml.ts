@@ -7,16 +7,28 @@ export function parseXml(xml: string) {
   } catch {
     const document = new DOMParser().parseFromString(xml, 'text/html');
     const root =
-      Array.from(document.body?.children ?? []).find((node) => node.nodeType === 1) ??
+      Array.from(document.body?.children ?? []).find(
+        (node) => node.nodeType === 1,
+      ) ??
       Array.from(document.children ?? []).find((node) => node.nodeType === 1) ??
       document.documentElement;
     return new Proxy(document, {
       get(target, prop, receiver) {
         if (prop === 'documentElement') return root;
-        if (prop === 'querySelector') return root?.querySelector?.bind(root) ?? target.querySelector.bind(target);
-        if (prop === 'querySelectorAll') return root?.querySelectorAll?.bind(root) ?? target.querySelectorAll.bind(target);
+        if (prop === 'querySelector')
+          return (
+            root?.querySelector?.bind(root) ?? target.querySelector.bind(target)
+          );
+        if (prop === 'querySelectorAll')
+          return (
+            root?.querySelectorAll?.bind(root) ??
+            target.querySelectorAll.bind(target)
+          );
         if (prop === 'getElementsByTagName') {
-          return root?.getElementsByTagName?.bind(root) ?? target.getElementsByTagName.bind(target);
+          return (
+            root?.getElementsByTagName?.bind(root) ??
+            target.getElementsByTagName.bind(target)
+          );
         }
         return Reflect.get(target, prop, receiver);
       },
@@ -40,56 +52,94 @@ export function attr(node: Element | null | undefined, name: string) {
 
   const localName = name.includes(':') ? name.split(':').pop() : name;
   const attributes = node.attributes ? Array.from(node.attributes) : [];
-  const matched = attributes.find((item) => item.localName === localName || item.name === name);
+  const matched = attributes.find(
+    (item) => item.localName === localName || item.name === name,
+  );
   return matched?.value;
 }
 
 function normalizedLocalName(node: Element) {
-  return node.localName.split(':').pop()?.toLowerCase() ?? node.localName.toLowerCase();
+  return (
+    node.localName.split(':').pop()?.toLowerCase() ??
+    node.localName.toLowerCase()
+  );
 }
 
-export function matchesLocalName(node: Element | null | undefined, localName: string) {
+export function matchesLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) return false;
   return normalizedLocalName(node) === localName.toLowerCase();
 }
 
-export function descendantByXmlLocalName(node: Element | null | undefined, localName: string) {
+export function descendantByXmlLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) return null;
   const normalized = localName.toLowerCase();
   return (
     Array.from(node.getElementsByTagName('*')).find(
-      (child) => child.nodeName.includes(':') && normalizedLocalName(child) === normalized,
+      (child) =>
+        child.nodeName.includes(':') &&
+        normalizedLocalName(child) === normalized,
     ) ?? null
   );
 }
 
-export function firstElement(node: Element | null | undefined, selector: string) {
+export function firstElement(
+  node: Element | null | undefined,
+  selector: string,
+) {
   return node?.querySelector(selector) ?? null;
 }
 
-export function allElements(node: Element | null | undefined, selector: string) {
+export function allElements(
+  node: Element | null | undefined,
+  selector: string,
+) {
   return node ? Array.from(node.querySelectorAll(selector)) : [];
 }
 
-export function childByLocalName(node: Element | null | undefined, localName: string) {
+export function childByLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) {
     return null;
   }
 
   const normalized = localName.toLowerCase();
-  return Array.from(node.children).find((child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized) ?? null;
+  return (
+    Array.from(node.children).find(
+      (child) =>
+        normalizedLocalName(child) === normalized ||
+        child.localName.toLowerCase() === normalized,
+    ) ?? null
+  );
 }
 
-export function childrenByLocalName(node: Element | null | undefined, localName: string) {
+export function childrenByLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) {
     return [];
   }
 
   const normalized = localName.toLowerCase();
-  return Array.from(node.children).filter((child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized);
+  return Array.from(node.children).filter(
+    (child) =>
+      normalizedLocalName(child) === normalized ||
+      child.localName.toLowerCase() === normalized,
+  );
 }
 
-export function descendantByLocalName(node: Element | null | undefined, localName: string) {
+export function descendantByLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) {
     return null;
   }
@@ -98,7 +148,9 @@ export function descendantByLocalName(node: Element | null | undefined, localNam
 
   // 首先尝试标准方法
   const standardMatch = Array.from(node.getElementsByTagName('*')).find(
-    (child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized,
+    (child) =>
+      normalizedLocalName(child) === normalized ||
+      child.localName.toLowerCase() === normalized,
   );
 
   if (standardMatch) {
@@ -140,7 +192,10 @@ export function descendantByLocalName(node: Element | null | undefined, localNam
   return null;
 }
 
-export function descendantsByLocalName(node: Element | null | undefined, localName: string) {
+export function descendantsByLocalName(
+  node: Element | null | undefined,
+  localName: string,
+) {
   if (!node) {
     return [];
   }
@@ -149,7 +204,9 @@ export function descendantsByLocalName(node: Element | null | undefined, localNa
 
   // 首先尝试标准方法
   const standardMatches = Array.from(node.getElementsByTagName('*')).filter(
-    (child) => normalizedLocalName(child) === normalized || child.localName.toLowerCase() === normalized,
+    (child) =>
+      normalizedLocalName(child) === normalized ||
+      child.localName.toLowerCase() === normalized,
   );
 
   if (standardMatches.length > 0) {
@@ -177,7 +234,9 @@ export function descendantsByLocalName(node: Element | null | undefined, localNa
   const prefixes = ['v:', 'w:', 'o:'];
   for (const prefix of prefixes) {
     try {
-      const prefixedMatches = Array.from(node.getElementsByTagName(prefix + normalized));
+      const prefixedMatches = Array.from(
+        node.getElementsByTagName(prefix + normalized),
+      );
       if (prefixedMatches.length > 0) {
         return prefixedMatches;
       }
