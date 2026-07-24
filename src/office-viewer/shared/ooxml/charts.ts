@@ -30,6 +30,8 @@ export type OfficeChartType =
 export type OfficeChartSeries = {
   name: string;
   values: number[];
+  xValues?: number[];
+  bubbleSizes?: number[];
   type?: OfficeChartType;
   stacking?: 'stacked' | 'percentStacked';
   stackGroup?: string;
@@ -107,6 +109,9 @@ export type OfficeChartModel = {
   mapName?: string;
   mapGeoJsonUrl?: string;
   snapshotSrc?: string;
+  sourceType?: string;
+  renderMode?: 'interactive' | 'snapshot';
+  degradedFrom?: string;
 };
 
 const DEFAULT_COLORS = [
@@ -1843,7 +1848,9 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
       data:
         isScatter || isBubbleSeries
           ? item.values.map((value, valueIndex) => [
-              categories[valueIndex] ?? String(valueIndex + 1),
+              item.xValues?.[valueIndex] ??
+                categories[valueIndex] ??
+                valueIndex + 1,
               value,
             ])
           : item.values,
@@ -1884,7 +1891,19 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
           isBubbleSeries ||
           seriesType === 'scatter',
       symbol: markerSymbol,
-      symbolSize: item.marker?.size ?? (isBubbleSeries ? 14 : 8),
+      symbolSize:
+        isBubbleSeries && item.bubbleSizes?.length
+          ? (_value: unknown, parameters: { dataIndex: number }) =>
+              Math.max(
+                6,
+                Math.min(
+                  42,
+                  Math.sqrt(
+                    Math.abs(item.bubbleSizes?.[parameters.dataIndex] ?? 0),
+                  ) * 6,
+                ),
+              )
+          : item.marker?.size ?? (isBubbleSeries ? 14 : 8),
       label: labelConfig,
       barWidth,
       barGap:

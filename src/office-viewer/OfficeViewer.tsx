@@ -12,15 +12,21 @@ import React, {
 import './index.less';
 import type { DocDocument } from './services/doc/types';
 import type { DocxDocument } from './services/docx/types';
+import { disposePresentationDocument } from './services/presentation/dispose';
 import type { PptxDocument } from './services/pptx/types';
 import {
   detectPreviewKind,
+  isPresentationPreviewKind,
+  isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
   parseOfficeFile,
   type ParsedOfficeFile,
   type PreviewKind,
 } from './services/preview';
-import type { XlsxWorkbook } from './services/xlsx/types';
+import {
+  disposeSpreadsheetWorkbook,
+  type SpreadsheetWorkbook,
+} from './services/spreadsheet/types';
 import { OfficePreviewStage } from './shell/PreviewStage';
 import { OfficeToolbar } from './shell/Toolbar';
 import {
@@ -52,6 +58,8 @@ const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation':
     '.pptx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.ms-powerpoint': '.ppt',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
     '.docx',
   'application/msword': '.doc',
@@ -93,7 +101,7 @@ function hasFileExtension(fileName: string) {
 function ensureSupportedOfficeFile(file: File) {
   if (!isSupportedOfficeFileName(file.name)) {
     throw new Error(
-      '暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+      '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     );
   }
 }
@@ -105,7 +113,7 @@ function createFileFromBlob(blob: Blob, fileName?: string) {
     !isSupportedOfficeFileName(fileName)
   ) {
     throw new Error(
-      '无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+      '无法识别 Office 文件类型，请提供 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     );
   }
 
@@ -119,7 +127,7 @@ function createFileFromBlob(blob: Blob, fileName?: string) {
 
   if (!inferredFileName) {
     throw new Error(
-      '无法识别 Office 文件类型，请提供 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+      '无法识别 Office 文件类型，请提供 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     );
   }
 
@@ -150,7 +158,7 @@ async function downloadOfficeFile(url: string, signal?: AbortSignal) {
     !isSupportedOfficeFileName(urlFileName)
   ) {
     throw new Error(
-      '暂不支持该文件类型，请选择 PPTX、XLSX、DOCX、DOC 或 WPS 文件',
+      '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     );
   }
 
@@ -190,7 +198,10 @@ function OfficeViewerComponent({
   const [previewKind, setPreviewKind] =
     useState<PreviewKind>(defaultPreviewKind);
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
-  const [xlsxWorkbook, setXlsxWorkbook] = useState<XlsxWorkbook>();
+  const presentationDocumentRef = useRef<PptxDocument>();
+  const [spreadsheetWorkbook, setSpreadsheetWorkbook] =
+    useState<SpreadsheetWorkbook>();
+  const spreadsheetWorkbookRef = useRef<SpreadsheetWorkbook>();
   const [docxDocument, setDocxDocument] = useState<DocxDocument>();
   const [docDocument, setDocDocument] = useState<DocDocument>();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -224,14 +235,33 @@ function OfficeViewerComponent({
       setZoom(defaultZoomRef.current);
 
       const parsed = await parseOfficeFile(file);
-      if (loadGeneration !== loadGenerationRef.current) return;
+      if (loadGeneration !== loadGenerationRef.current) {
+        if (isSpreadsheetPreviewKind(parsed.kind)) {
+          disposeSpreadsheetWorkbook(parsed.workbook);
+        } else if (isPresentationPreviewKind(parsed.kind)) {
+          disposePresentationDocument(parsed.document);
+        }
+        return;
+      }
 
-      setPptxDocument(parsed.kind === 'pptx' ? parsed.document : undefined);
-      setXlsxWorkbook(parsed.kind === 'xlsx' ? parsed.workbook : undefined);
+      const nextPresentationDocument = isPresentationPreviewKind(parsed.kind)
+        ? parsed.document
+        : undefined;
+      disposePresentationDocument(presentationDocumentRef.current);
+      presentationDocumentRef.current = nextPresentationDocument;
+      setPptxDocument(nextPresentationDocument);
+      const nextSpreadsheetWorkbook = isSpreadsheetPreviewKind(parsed.kind)
+        ? parsed.workbook
+        : undefined;
+      disposeSpreadsheetWorkbook(spreadsheetWorkbookRef.current);
+      spreadsheetWorkbookRef.current = nextSpreadsheetWorkbook;
+      setSpreadsheetWorkbook(nextSpreadsheetWorkbook);
       setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
       setDocDocument(parsed.kind === 'doc' ? parsed.document : undefined);
       setActiveSheetId(
-        parsed.kind === 'xlsx' ? parsed.workbook.sheets[0]?.id : undefined,
+        isSpreadsheetPreviewKind(parsed.kind)
+          ? parsed.workbook.sheets[0]?.id
+          : undefined,
       );
       onFileParsedRef.current?.(parsed, file);
     } catch (nextError) {
@@ -313,6 +343,10 @@ function OfficeViewerComponent({
       // 组件卸载时让所有不可取消的本地解析任务失效，避免异步结果继续写入状态。
       loadGenerationRef.current += 1;
       requestControllerRef.current?.abort();
+      disposeSpreadsheetWorkbook(spreadsheetWorkbookRef.current);
+      spreadsheetWorkbookRef.current = undefined;
+      disposePresentationDocument(presentationDocumentRef.current);
+      presentationDocumentRef.current = undefined;
     },
     [],
   );
@@ -320,22 +354,22 @@ function OfficeViewerComponent({
   const hasDocument = useMemo(
     () =>
       // 工具栏的翻页/缩放按钮只依赖“当前格式是否有可渲染内容”，不要耦合到具体 viewer 实现。
-      previewKind === 'pptx'
+      isPresentationPreviewKind(previewKind)
         ? Boolean(pptxDocument?.slides.length)
-        : previewKind === 'xlsx'
-        ? Boolean(xlsxWorkbook?.sheets.length)
+        : isSpreadsheetPreviewKind(previewKind)
+        ? Boolean(spreadsheetWorkbook?.sheets.length)
         : previewKind === 'docx'
         ? Boolean(docxDocument?.blocks.length)
         : Boolean(docDocument?.paragraphs.length),
-    [docDocument, docxDocument, pptxDocument, previewKind, xlsxWorkbook],
+    [docDocument, docxDocument, pptxDocument, previewKind, spreadsheetWorkbook],
   );
 
   const canGoPreviousSlide =
-    previewKind === 'pptx' &&
+    isPresentationPreviewKind(previewKind) &&
     Boolean(pptxDocument?.slides.length) &&
     activeIndex > 0;
   const canGoNextSlide =
-    previewKind === 'pptx' &&
+    isPresentationPreviewKind(previewKind) &&
     Boolean(pptxDocument?.slides.length) &&
     activeIndex < (pptxDocument?.slides.length ?? 1) - 1;
 
@@ -432,7 +466,7 @@ function OfficeViewerComponent({
             error={error}
             previewKind={previewKind}
             pptxDocument={pptxDocument}
-            xlsxWorkbook={xlsxWorkbook}
+            spreadsheetWorkbook={spreadsheetWorkbook}
             docxDocument={docxDocument}
             docDocument={docDocument}
             activeIndex={activeIndex}

@@ -58,7 +58,13 @@ function XlsxSheetTableComponent({ sheet, tableWidth }: XlsxSheetTableProps) {
       </thead>
       <tbody>
         {sheet.rows.map((row) => (
-          <tr key={row.index} style={{ height: row.height }}>
+          <tr
+            key={row.index}
+            style={{
+              height: row.height,
+              display: row.hidden ? 'none' : undefined,
+            }}
+          >
             <th className="oxv-xlsx-sheet-table__row-header">{row.index}</th>
             {row.cells.map((cell) => {
               if (cell.hiddenByMerge) return null;

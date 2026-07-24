@@ -29,6 +29,10 @@ function OfficeChartViewComponent({
   const [visible, setVisible] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
   const [renderFailed, setRenderFailed] = useState(false);
+  const [generatedSnapshotSrc, setGeneratedSnapshotSrc] = useState<
+    string | undefined
+  >();
+  const snapshotCapturedRef = useRef(false);
   const displayWidth = width * (zoom / 100);
   const displayHeight = height * (zoom / 100);
 
@@ -39,6 +43,11 @@ function OfficeChartViewComponent({
     }),
     [displayHeight, displayWidth],
   );
+
+  useEffect(() => {
+    setGeneratedSnapshotSrc(undefined);
+    snapshotCapturedRef.current = false;
+  }, [chart]);
 
   useEffect(() => {
     setMapFailed(false);
@@ -66,7 +75,14 @@ function OfficeChartViewComponent({
     }
 
     async function mountChart() {
-      if (!visible || !hostRef.current || chartRef.current) return;
+      if (
+        !visible ||
+        !hostRef.current ||
+        chartRef.current ||
+        (chart.renderMode === 'snapshot' && chart.snapshotSrc)
+      ) {
+        return;
+      }
 
       try {
         const echarts = echartsRef.current ?? (await import('echarts'));
@@ -104,9 +120,28 @@ function OfficeChartViewComponent({
           renderer: 'canvas',
         });
         chartRef.current = instance;
+        if (chart.renderMode === 'snapshot') {
+          const captureSnapshot = () => {
+            if (snapshotCapturedRef.current || disposed) return;
+            snapshotCapturedRef.current = true;
+            try {
+              const snapshot = instance.getDataURL({
+                type: 'png',
+                pixelRatio: 1,
+                backgroundColor: '#fff',
+              });
+              setGeneratedSnapshotSrc(snapshot);
+              instance.dispose();
+              chartRef.current = null;
+            } catch {
+              if (!chart.snapshotSrc) setRenderFailed(true);
+            }
+          };
+          instance.on('finished', captureSnapshot);
+        }
         instance.setOption(buildOfficeChartOption(chart), {
           notMerge: true,
-          lazyUpdate: true,
+          lazyUpdate: chart.renderMode !== 'snapshot',
         });
         setReady(true);
 
@@ -144,6 +179,25 @@ function OfficeChartViewComponent({
     return <Empty description="图表尺寸无效" />;
   }
 
+  const staticSnapshotSrc =
+    chart.renderMode === 'snapshot'
+      ? chart.snapshotSrc ?? generatedSnapshotSrc
+      : undefined;
+  if (staticSnapshotSrc) {
+    return (
+      <div
+        className="oxv-office-chart oxv-office-chart--static"
+        style={outerStyle}
+      >
+        <img
+          className="oxv-office-chart__snapshot"
+          src={staticSnapshotSrc}
+          alt={chart.title ?? chart.degradedFrom ?? '静态图表'}
+        />
+      </div>
+    );
+  }
+
   if (renderFailed || (chart.type === 'map' && mapFailed)) {
     if (!chart.snapshotSrc) {
       return (
@@ -158,7 +212,7 @@ function OfficeChartViewComponent({
         <img
           className="oxv-office-chart__snapshot"
           src={chart.snapshotSrc}
-          alt={chart.title ?? chart.mapRegion ?? ''}
+          alt={chart.title ?? chart.mapRegion ?? chart.degradedFrom ?? ''}
         />
       </div>
     );

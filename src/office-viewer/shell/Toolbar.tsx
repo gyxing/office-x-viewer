@@ -3,6 +3,10 @@ import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
 import React, { memo, useMemo } from 'react';
 import type { PreviewKind } from '../services/preview';
 import {
+  isPresentationPreviewKind,
+  isSpreadsheetPreviewKind,
+} from '../services/preview';
+import {
   OFFICE_DEFAULT_ZOOM,
   OFFICE_MAX_ZOOM,
   OFFICE_MIN_ZOOM,
@@ -18,7 +22,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from './icons';
-const OFFICE_FILE_ACCEPT = '.pptx,.xlsx,.docx,.doc,.wps';
+const OFFICE_FILE_ACCEPT = '.pptx,.ppt,.xlsx,.xls,.docx,.doc,.wps';
 
 type OfficeToolbarProps = {
   fileName: string;
@@ -40,7 +44,7 @@ type OfficeToolbarProps = {
 };
 
 function getPreviewIcon(kind: PreviewKind) {
-  if (kind === 'xlsx') return <FileExcelIcon />;
+  if (isSpreadsheetPreviewKind(kind)) return <FileExcelIcon />;
   if (kind === 'docx' || kind === 'doc') return <FileWordIcon />;
   return <FilePptIcon />;
 }
@@ -89,7 +93,9 @@ function OfficeToolbarComponent({
             aria-label="上一页"
             icon={<ChevronLeftIcon />}
             disabled={
-              previewKind !== 'pptx' || !hasDocument || !canGoPreviousSlide
+              !isPresentationPreviewKind(previewKind) ||
+              !hasDocument ||
+              !canGoPreviousSlide
             }
             onClick={onPreviousSlide}
           />
@@ -98,7 +104,11 @@ function OfficeToolbarComponent({
           <Button
             aria-label="下一页"
             icon={<ChevronRightIcon />}
-            disabled={previewKind !== 'pptx' || !hasDocument || !canGoNextSlide}
+            disabled={
+              !isPresentationPreviewKind(previewKind) ||
+              !hasDocument ||
+              !canGoNextSlide
+            }
             onClick={onNextSlide}
           />
         </Tooltip>

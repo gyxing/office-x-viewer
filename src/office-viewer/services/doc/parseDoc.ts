@@ -1,3 +1,4 @@
+import { CFB_SIGNATURE, parseCfb, type CfbFile } from '../../shared/binary/cfb';
 import type {
   DocBlock,
   DocDocument,
@@ -10,17 +11,6 @@ import type {
   DocTextInline,
   DocTextStyle,
 } from './types';
-
-type CfbDirectoryEntry = {
-  name: string;
-  objectType: number;
-  startSector: number;
-  streamSize: number;
-};
-
-type CfbFile = {
-  streams: Map<string, Uint8Array>;
-};
 
 type DocPiece = {
   charStart: number;
@@ -84,12 +74,6 @@ type PendingTableCell = {
 type DocFontTable = string[];
 
 // 旧版 .doc 是 OLE/CFB 二进制容器，不是 zip；这里实现最小可用的前端降级解析。
-const DOC_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-const FREE_SECTOR = 0xffffffff;
-const END_OF_CHAIN = 0xfffffffe;
-const FAT_SECTOR = 0xfffffffd;
-const MINI_STREAM_CUTOFF_SIZE = 4096;
-
 const DEFAULT_DOC_PAGE = {
   width: 794,
   minHeight: 1123,
@@ -133,7 +117,7 @@ async function readBytes(file: File | Blob | ArrayBuffer | Uint8Array) {
 }
 
 function isOleDoc(bytes: Uint8Array) {
-  return DOC_MAGIC.every((value, index) => bytes[index] === value);
+  return CFB_SIGNATURE.every((value, index) => bytes[index] === value);
 }
 
 function readUint16(view: DataView, offset: number) {
@@ -158,257 +142,6 @@ function readInt16(view: DataView, offset: number) {
 
 function twipToPx(value: number) {
   return (value / 1440) * 96;
-}
-
-function sectorOffset(sector: number, sectorSize: number) {
-  return (sector + 1) * sectorSize;
-}
-
-function sliceSector(bytes: Uint8Array, sector: number, sectorSize: number) {
-  const offset = sectorOffset(sector, sectorSize);
-  return bytes.slice(offset, offset + sectorSize);
-}
-
-function concatChunks(chunks: Uint8Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-
-  chunks.forEach((chunk) => {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  });
-
-  return result;
-}
-
-function readSectorChain(
-  startSector: number,
-  fat: number[],
-  bytes: Uint8Array,
-  sectorSize: number,
-) {
-  const chunks: Uint8Array[] = [];
-  const seen = new Set<number>();
-  let sector = startSector;
-
-  while (
-    sector !== END_OF_CHAIN &&
-    sector !== FREE_SECTOR &&
-    sector < fat.length &&
-    !seen.has(sector)
-  ) {
-    seen.add(sector);
-    chunks.push(sliceSector(bytes, sector, sectorSize));
-    sector = fat[sector] ?? END_OF_CHAIN;
-  }
-
-  return concatChunks(chunks);
-}
-
-function readMiniSectorChain(
-  startSector: number,
-  miniFat: number[],
-  miniStream: Uint8Array,
-  miniSectorSize: number,
-) {
-  const chunks: Uint8Array[] = [];
-  const seen = new Set<number>();
-  let sector = startSector;
-
-  while (
-    sector !== END_OF_CHAIN &&
-    sector !== FREE_SECTOR &&
-    sector < miniFat.length &&
-    !seen.has(sector)
-  ) {
-    seen.add(sector);
-    const offset = sector * miniSectorSize;
-    chunks.push(miniStream.slice(offset, offset + miniSectorSize));
-    sector = miniFat[sector] ?? END_OF_CHAIN;
-  }
-
-  return concatChunks(chunks);
-}
-
-function decodeUtf16Name(bytes: Uint8Array, length: number) {
-  const chars: number[] = [];
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const max = Math.max(0, length - 2);
-
-  for (let offset = 0; offset < max; offset += 2) {
-    chars.push(view.getUint16(offset, true));
-  }
-
-  return String.fromCharCode(...chars);
-}
-
-function parseDirectoryEntries(directoryStream: Uint8Array) {
-  const entries: CfbDirectoryEntry[] = [];
-
-  for (let offset = 0; offset + 128 <= directoryStream.length; offset += 128) {
-    const entryBytes = directoryStream.slice(offset, offset + 128);
-    const view = new DataView(
-      entryBytes.buffer,
-      entryBytes.byteOffset,
-      entryBytes.byteLength,
-    );
-    const nameLength = readUint16(view, 64);
-    const name = decodeUtf16Name(entryBytes.slice(0, 64), nameLength);
-    const objectType = entryBytes[66];
-    const startSector = readUint32(view, 116);
-    const streamSize = readUint32(view, 120);
-
-    if (name && objectType !== 0) {
-      entries.push({ name, objectType, startSector, streamSize });
-    }
-  }
-
-  return entries;
-}
-
-function readDifatSectorEntries(
-  bytes: Uint8Array,
-  sector: number,
-  sectorSize: number,
-) {
-  const data = sliceSector(bytes, sector, sectorSize);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const values: number[] = [];
-  const entryCount = Math.floor((sectorSize - 4) / 4);
-
-  for (let index = 0; index < entryCount; index += 1) {
-    values.push(readUint32(view, index * 4));
-  }
-
-  return {
-    values,
-    nextSector: readUint32(view, sectorSize - 4),
-  };
-}
-
-function readFat(bytes: Uint8Array, sectorSize: number, difat: number[]) {
-  const fat: number[] = [];
-
-  difat.forEach((sector) => {
-    if (
-      sector === FREE_SECTOR ||
-      sector === END_OF_CHAIN ||
-      sector === FAT_SECTOR
-    )
-      return;
-    const data = sliceSector(bytes, sector, sectorSize);
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    for (let offset = 0; offset + 4 <= data.length; offset += 4) {
-      fat.push(readUint32(view, offset));
-    }
-  });
-
-  return fat;
-}
-
-function readMiniFat(
-  bytes: Uint8Array,
-  startSector: number,
-  sectorCount: number,
-  fat: number[],
-  sectorSize: number,
-) {
-  if (!sectorCount || startSector === END_OF_CHAIN) return [];
-
-  const data = readSectorChain(startSector, fat, bytes, sectorSize).slice(
-    0,
-    sectorCount * sectorSize,
-  );
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const miniFat: number[] = [];
-
-  for (let offset = 0; offset + 4 <= data.length; offset += 4) {
-    miniFat.push(readUint32(view, offset));
-  }
-
-  return miniFat;
-}
-
-function parseCfb(bytes: Uint8Array): CfbFile {
-  // CFB 先通过 FAT/miniFAT 还原各个 stream，后续 WordDocument/Table stream 才能继续解析。
-  if (!isOleDoc(bytes)) {
-    throw new Error(
-      '\u4e0d\u662f\u6709\u6548\u7684 Word 97-2003 DOC \u6587\u4ef6',
-    );
-  }
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const sectorSize = 2 ** readUint16(view, 30);
-  const miniSectorSize = 2 ** readUint16(view, 32);
-  const directoryStartSector = readUint32(view, 48);
-  const miniFatStartSector = readUint32(view, 60);
-  const miniFatSectorCount = readUint32(view, 64);
-  const difatStartSector = readUint32(view, 68);
-  const difatSectorCount = readUint32(view, 72);
-  const difat: number[] = [];
-
-  for (let offset = 76; offset < 512; offset += 4) {
-    const value = readUint32(view, offset);
-    if (value !== FREE_SECTOR) difat.push(value);
-  }
-
-  let nextDifatSector = difatStartSector;
-  for (
-    let index = 0;
-    index < difatSectorCount && nextDifatSector !== END_OF_CHAIN;
-    index += 1
-  ) {
-    const sector = readDifatSectorEntries(bytes, nextDifatSector, sectorSize);
-    sector.values.forEach((value) => {
-      if (value !== FREE_SECTOR) difat.push(value);
-    });
-    nextDifatSector = sector.nextSector;
-  }
-
-  const fat = readFat(bytes, sectorSize, difat);
-  const directoryStream = readSectorChain(
-    directoryStartSector,
-    fat,
-    bytes,
-    sectorSize,
-  );
-  const entries = parseDirectoryEntries(directoryStream);
-  const root = entries.find((entry) => entry.objectType === 5);
-  const miniStream =
-    root && root.startSector !== END_OF_CHAIN
-      ? readSectorChain(root.startSector, fat, bytes, sectorSize).slice(
-          0,
-          root.streamSize,
-        )
-      : new Uint8Array();
-  const miniFat = readMiniFat(
-    bytes,
-    miniFatStartSector,
-    miniFatSectorCount,
-    fat,
-    sectorSize,
-  );
-  const streams = new Map<string, Uint8Array>();
-
-  entries
-    .filter((entry) => entry.objectType === 2)
-    .forEach((entry) => {
-      const isMiniStream =
-        entry.streamSize < MINI_STREAM_CUTOFF_SIZE &&
-        entry.startSector !== END_OF_CHAIN;
-      const data = isMiniStream
-        ? readMiniSectorChain(
-            entry.startSector,
-            miniFat,
-            miniStream,
-            miniSectorSize,
-          )
-        : readSectorChain(entry.startSector, fat, bytes, sectorSize);
-      streams.set(entry.name, data.slice(0, entry.streamSize));
-    });
-
-  return { streams };
 }
 
 function readFibField(wordDocument: Uint8Array, offset: number) {
@@ -2014,8 +1747,8 @@ export async function parseDoc(file: File): Promise<DocDocument> {
     return parsePlainLikeDoc(bytes, file.name, warnings);
   }
 
-  const cfb = parseCfb(bytes);
-  const wordDocument = cfb.streams.get('WordDocument');
+  const cfb = await parseCfb(bytes);
+  const wordDocument = cfb.getStream('WordDocument');
 
   if (!wordDocument) {
     throw new Error(
@@ -2024,7 +1757,7 @@ export async function parseDoc(file: File): Promise<DocDocument> {
   }
 
   const fib = parseFib(wordDocument);
-  const tableStream = cfb.streams.get(fib.tableStreamName);
+  const tableStream = cfb.getStream(fib.tableStreamName);
 
   if (!tableStream) {
     throw new Error(

@@ -25,6 +25,13 @@ function XlsxFloatingImage({ image }: { image: XlsxImage }) {
       alt={image.alt ?? ''}
       title={image.name}
       style={imageStyle}
+      onError={(event) => {
+        event.currentTarget.setAttribute(
+          'aria-label',
+          image.alt ? `${image.alt}（图片加载失败）` : '图片加载失败',
+        );
+        event.currentTarget.setAttribute('data-load-error', 'true');
+      }}
     />
   );
 }

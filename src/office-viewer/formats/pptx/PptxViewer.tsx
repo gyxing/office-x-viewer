@@ -1,13 +1,13 @@
 // PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
 import React, { memo } from 'react';
-import type { PptxDocument } from '../../services/pptx/types';
+import type { PresentationDocument } from '../../services/presentation/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
 
 type PptxViewerProps = {
-  document?: PptxDocument;
+  document?: PresentationDocument;
   activeIndex: number;
   zoom: number;
   onSelectSlide: (index: number) => void;

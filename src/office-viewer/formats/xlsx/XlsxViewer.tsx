@@ -3,11 +3,13 @@ import React, { memo, useMemo } from 'react';
 import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
+import { XlsxChartSheet } from './XlsxChartSheet';
 import { XlsxSheetGrid } from './XlsxSheetGrid';
 import { XlsxSheetTabs } from './XlsxSheetTabs';
 
 type XlsxViewerProps = {
   workbook?: XlsxWorkbook;
+  kind?: 'xlsx' | 'xls';
   activeSheetId?: string;
   zoom: number;
   onSelectSheet: (sheetId: string) => void;
@@ -15,6 +17,7 @@ type XlsxViewerProps = {
 
 function XlsxViewerComponent({
   workbook,
+  kind = 'xlsx',
   activeSheetId,
   zoom,
   onSelectSheet,
@@ -27,7 +30,7 @@ function XlsxViewerComponent({
   );
 
   if (!activeSheet) {
-    return <OfficeEmpty kind="xlsx" />;
+    return <OfficeEmpty kind={kind} />;
   }
 
   return (
@@ -37,7 +40,11 @@ function XlsxViewerComponent({
         activeSheet={activeSheet}
         onSelectSheet={onSelectSheet}
       />
-      <XlsxSheetGrid sheet={activeSheet} zoom={zoom} />
+      {activeSheet.kind === 'chart' ? (
+        <XlsxChartSheet sheet={activeSheet} zoom={zoom} />
+      ) : (
+        <XlsxSheetGrid sheet={activeSheet} zoom={zoom} />
+      )}
     </div>
   );
 }

@@ -2,9 +2,12 @@
 import React, { lazy, memo, Suspense } from 'react';
 import type { DocDocument } from '../services/doc/types';
 import type { DocxDocument } from '../services/docx/types';
-import type { PptxDocument } from '../services/pptx/types';
-import type { PreviewKind } from '../services/preview';
-import type { XlsxWorkbook } from '../services/xlsx/types';
+import type { PresentationDocument } from '../services/presentation/types';
+import {
+  isSpreadsheetPreviewKind,
+  type PreviewKind,
+} from '../services/preview';
+import type { SpreadsheetWorkbook } from '../services/spreadsheet/types';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
 
@@ -33,8 +36,8 @@ type OfficePreviewStageProps = {
   loading: boolean;
   error?: string;
   previewKind: PreviewKind;
-  pptxDocument?: PptxDocument;
-  xlsxWorkbook?: XlsxWorkbook;
+  pptxDocument?: PresentationDocument;
+  spreadsheetWorkbook?: SpreadsheetWorkbook;
   docxDocument?: DocxDocument;
   docDocument?: DocDocument;
   activeIndex: number;
@@ -49,7 +52,7 @@ function OfficePreviewStageComponent({
   error,
   previewKind,
   pptxDocument,
-  xlsxWorkbook,
+  spreadsheetWorkbook,
   docxDocument,
   docDocument,
   activeIndex,
@@ -64,9 +67,10 @@ function OfficePreviewStageComponent({
   // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
   return (
     <Suspense fallback={<OfficeLoading />}>
-      {previewKind === 'xlsx' ? (
+      {isSpreadsheetPreviewKind(previewKind) ? (
         <LazyXlsxViewer
-          workbook={xlsxWorkbook}
+          workbook={spreadsheetWorkbook}
+          kind={previewKind}
           activeSheetId={activeSheetId}
           zoom={zoom}
           onSelectSheet={onSelectSheet}

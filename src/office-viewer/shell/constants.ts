@@ -9,7 +9,9 @@ export const OFFICE_DEFAULT_ZOOM = 100;
 
 export const OFFICE_EMPTY_DESCRIPTIONS = {
   pptx: '请先上传 PPTX 文件开始预览',
+  ppt: '请先上传 PPT 文件开始预览',
   xlsx: '请先上传 XLSX 文件开始预览',
+  xls: '请先上传 XLS 文件开始预览',
   docx: '请先上传 DOCX 文件开始预览',
   doc: '请先上传 DOC 或 WPS 文件开始预览',
 } as const;
