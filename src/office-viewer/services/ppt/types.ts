@@ -5,6 +5,8 @@ import type {
   TextStyle,
   ThemeModel,
 } from '../presentation/types';
+import { createResourceReference } from '../parsing/assembly/resourceReferences';
+import type { PortableResource } from '../parsing/protocol/messages';
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
 
 export type PptRecord = {
@@ -20,7 +22,8 @@ export type PptRecord = {
 
 export type PptParseContext = {
   warnings: PresentationWarning[];
-  objectUrls: Set<string>;
+  resources: PortableResource[];
+  resourceSequence: number;
   blipUrls: Map<number, string>;
   charts: Map<number, { chart: OfficeChartModel; title?: string }>;
   yieldIfNeeded: () => Promise<void>;
@@ -82,16 +85,34 @@ export type PptBinaryDocument = {
   warnings: PresentationWarning[];
 };
 
-/** 创建一次解析独占的 warning、Blob URL 与时间片上下文。 */
+/** 创建一次解析独占的 warning、可传输资源与时间片上下文。 */
 export function createPptParseContext(
   yieldIfNeeded: () => Promise<void>,
-  objectUrls = new Set<string>(),
 ): PptParseContext {
   return {
     warnings: [],
-    objectUrls,
+    resources: [],
+    resourceSequence: 0,
     blipUrls: new Map<number, string>(),
     charts: new Map<number, { chart: OfficeChartModel; title?: string }>(),
     yieldIfNeeded,
   };
+}
+
+/** 为 PPT 资源分配会话内稳定且不冲突的标识。 */
+export function createPptResourceId(
+  context: PptParseContext,
+  category: string,
+) {
+  context.resourceSequence += 1;
+  return `ppt:${category}:${context.resourceSequence}`;
+}
+
+/** 注册可传输资源，并返回只在解析模型中使用的资源引用。 */
+export function registerPptResource(
+  context: PptParseContext,
+  resource: PortableResource,
+) {
+  context.resources.push(resource);
+  return createResourceReference(resource.id);
 }

@@ -171,6 +171,7 @@ export class Biff8RecordCursor {
 export type ParseYieldState = {
   lastYieldAt: number;
   budgetMs: number;
+  checkpoint?: () => Promise<void>;
 };
 
 function currentTime() {
@@ -178,10 +179,14 @@ function currentTime() {
 }
 
 /** 创建主线程解析的协作式时间片状态。 */
-export function createParseYieldState(budgetMs = 8): ParseYieldState {
+export function createParseYieldState(
+  budgetMs = 8,
+  checkpoint?: () => Promise<void>,
+): ParseYieldState {
   return {
     lastYieldAt: currentTime(),
     budgetMs: Math.max(1, budgetMs),
+    checkpoint,
   };
 }
 
@@ -189,6 +194,7 @@ export function createParseYieldState(budgetMs = 8): ParseYieldState {
 export async function yieldToBrowserIfNeeded(state: ParseYieldState) {
   const now = currentTime();
   if (now - state.lastYieldAt < state.budgetMs) return;
+  await state.checkpoint?.();
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });

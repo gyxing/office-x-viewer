@@ -12,7 +12,6 @@ import type {
 export const DOC_IMAGE_ROW_GAP = 6;
 
 const DOC_PAGE_HEIGHT_BUFFER = 24;
-const DOC_WARNING_ESTIMATED_HEIGHT = 112;
 const DOC_IMAGE_LAYOUT_ROW_GAP = 12;
 const DOC_IMAGE_LAYOUT_VERTICAL_MARGIN = 22;
 
@@ -281,7 +280,6 @@ export function paginateDocBlocks(
   blocks: DocBlock[],
   page: DocPage,
   contentWidth: number,
-  hasWarning: boolean,
 ): PaginatedDocPage[] {
   const contentHeight = Math.max(
     240,
@@ -292,7 +290,7 @@ export function paginateDocBlocks(
   );
   const pages: PaginatedDocPage[] = [];
   let currentBlocks: DocBlock[] = [];
-  let currentHeight = hasWarning ? DOC_WARNING_ESTIMATED_HEIGHT : 0;
+  let currentHeight = 0;
   let syntheticImageIndex = 0;
 
   const flushPage = () => {

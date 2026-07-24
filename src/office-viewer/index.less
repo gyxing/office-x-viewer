@@ -6,18 +6,24 @@
   --oxv-notice-warning-color: #d46b08;
   --oxv-notice-warning-bg: #fffbe6;
   --oxv-notice-warning-border: #ffe58f;
+  --oxv-progress-color: #1677ff;
+  --oxv-progress-track: rgb(148 163 184 / 28%);
 
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   background: #eef1f6;
 }
 
 .oxv-office-viewer__layout {
-  min-height: inherit;
+  height: 100%;
+  min-height: 0;
   background: #eef1f6;
 }
 
 .oxv-office-viewer__content {
-  height: calc(100vh - 56px);
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   background: #eef1f6;
 }
@@ -29,6 +35,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
   gap: 16px;
   height: 56px;
   padding: 0 16px;
@@ -47,12 +54,72 @@
 .oxv-office-loading {
   display: grid;
   place-items: center;
-  height: calc(100vh - 56px);
+  height: 100%;
 }
 
 .oxv-office-loading__placeholder {
   width: 160px;
   height: 80px;
+}
+
+.oxv-office-parse-status {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  left: 12px;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.oxv-office-parse-status__label {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  color: #334155;
+  font-size: 12px;
+  background: rgb(255 255 255 / 92%);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 12%);
+}
+
+.oxv-office-parse-status__track {
+  height: 3px;
+  overflow: hidden;
+  background: var(--oxv-progress-track);
+  border-radius: 999px;
+}
+
+.oxv-office-parse-status__bar {
+  height: 100%;
+  background: var(--oxv-progress-color);
+  transition: width 160ms ease;
+}
+
+.oxv-office-parse-status__bar--indeterminate {
+  width: 35%;
+  animation: oxv-office-parse-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes oxv-office-parse-indeterminate {
+  from {
+    transform: translateX(-120%);
+  }
+
+  to {
+    transform: translateX(360%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oxv-office-parse-status__bar {
+    transition: none;
+  }
+
+  .oxv-office-parse-status__bar--indeterminate {
+    width: 100%;
+    animation: none;
+    opacity: 0.55;
+  }
 }
 
 .oxv-office-error {

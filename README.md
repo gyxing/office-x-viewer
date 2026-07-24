@@ -125,9 +125,13 @@ type OfficeViewerUri =
 | `defaultPreviewKind` | `'pptx' \| 'xlsx' \| 'docx' \| 'doc'`            | `'pptx'`       | 无文件时使用的默认预览类型               |
 | `defaultZoom`        | `number`                                         | `100`          | 默认缩放百分比，最终限制在 `25` 至 `300` |
 | `className`          | `string`                                         | -              | 根容器自定义类名                         |
+| `height`             | `CSSProperties['height']`                        | `100%`         | 预览器高度；未传时跟随父容器             |
 | `style`              | `CSSProperties`                                  | -              | 根容器自定义样式                         |
 | `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | 文件解析成功回调                         |
 | `onError`            | `(error: Error, file?: File) => void`            | -              | 下载、解析或全屏操作失败回调             |
+
+`height` 支持数字像素值以及 `720px`、`80vh`、`100%` 等 CSS 高度。传入
+`height` 时优先于 `style.height`；使用百分比高度时，父容器需要提供可计算的高度。
 
 公开导出的类型包括：
 

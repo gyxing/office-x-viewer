@@ -1,9 +1,6 @@
-// DocViewer 负责旧版 DOC 降级预览的整体布局、警告说明和页面滚动区。
-import { Typography } from 'antd';
 import React, { memo, useMemo } from 'react';
 import type { DocDocument } from '../../services/doc/types';
 import { OfficeEmpty } from '../../shell/Empty';
-import { OfficeNotice } from '../../shell/Notice';
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
@@ -41,6 +38,7 @@ function collectAnchoredImageIds(document?: DocDocument) {
   return ids;
 }
 
+// DocViewer 负责旧版 DOC/WPS 降级预览的固定警告和页面滚动区。
 function DocViewerComponent({ document, zoom }: DocViewerProps) {
   const page = document?.page;
   const contentWidth = page
@@ -49,21 +47,9 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
   const pages = useMemo(
     () =>
       document && page
-        ? paginateDocBlocks(
-            document.blocks,
-            page,
-            contentWidth,
-            Boolean(document.warnings.length),
-          )
+        ? paginateDocBlocks(document.blocks, page, contentWidth)
         : [],
     [contentWidth, document, page],
-  );
-  const summaryText = useMemo(
-    () =>
-      document
-        ? `${pages.length} 页 / ${document.paragraphs.length} 个文本段 / ${document.blocks.length} 个内容块 / ${document.images.length} 张图片`
-        : '',
-    [document, pages.length],
   );
   const anchoredImageIds = useMemo(
     () => collectAnchoredImageIds(document),
@@ -81,26 +67,14 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
 
   return (
     <div className="oxv-doc-viewer">
-      <div className="oxv-doc-viewer__header">
-        <Typography.Text strong ellipsis className="oxv-doc-viewer__title">
-          {document.title}
-        </Typography.Text>
-        <Typography.Text type="secondary" className="oxv-doc-viewer__summary">
-          {summaryText}
-        </Typography.Text>
-      </div>
+      {document.warnings.length ? (
+        <div className="oxv-doc-viewer__notice" role="alert">
+          {document.warnings.join(' ')}
+        </div>
+      ) : null}
       <div className="oxv-doc-viewer__scroller">
         {pages.map((docPage, pageIndex) => (
           <DocPageFrame key={docPage.id} page={page} zoom={zoom}>
-            {pageIndex === 0 && document.warnings.length ? (
-              <div className="oxv-doc-viewer__warning">
-                <OfficeNotice
-                  type="warning"
-                  title="DOC/WPS 预览说明"
-                  description={document.warnings.join(' ')}
-                />
-              </div>
-            ) : null}
             <DocContentRenderer
               blocks={docPage.blocks}
               contentWidth={contentWidth}

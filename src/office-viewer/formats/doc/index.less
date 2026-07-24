@@ -1,28 +1,19 @@
 .oxv-doc-viewer {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px);
+  height: 100%;
   overflow: hidden;
   background: #eef1f6;
 }
 
-.oxv-doc-viewer__header {
-  display: flex;
+.oxv-doc-viewer__notice {
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  height: 40px;
-  padding: 0 18px;
+  padding: 6px 16px;
+  color: var(--oxv-notice-warning-color);
+  font-size: 13px;
+  line-height: 1.5;
   background: #fff;
   border-bottom: 1px solid #dde3ec;
-}
-
-.oxv-doc-viewer__title {
-  max-width: 520px;
-}
-
-.oxv-doc-viewer__summary {
-  font-size: 12px;
 }
 
 .oxv-doc-viewer__scroller {
@@ -31,10 +22,6 @@
   padding: 24px;
   overflow: auto;
   scrollbar-gutter: stable both-edges;
-}
-
-.oxv-doc-viewer__warning {
-  margin-bottom: 24px;
 }
 
 .oxv-doc-page-frame {

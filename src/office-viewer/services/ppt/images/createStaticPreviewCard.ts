@@ -1,4 +1,8 @@
-import type { PptParseContext } from '../types';
+import {
+  createPptResourceId,
+  registerPptResource,
+  type PptParseContext,
+} from '../types';
 
 function escapeXml(value: string) {
   return value
@@ -27,8 +31,10 @@ export function createPptStaticPreviewCard(
   <rect x="200" y="212" width="310" height="12" rx="6" fill="#CBD5E1"/>
   <rect x="200" y="240" width="230" height="12" rx="6" fill="#E2E8F0"/>
 </svg>`;
-  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  context.objectUrls.add(url);
-  return url;
+  return registerPptResource(context, {
+    id: createPptResourceId(context, 'preview'),
+    encoding: 'text',
+    mimeType: 'image/svg+xml',
+    text: svg,
+  });
 }

@@ -1,4 +1,3 @@
-import { Typography } from 'antd';
 import React, { memo, useMemo } from 'react';
 import type { DocxDocument } from '../../services/docx/types';
 import { OfficeEmpty } from '../../shell/Empty';
@@ -11,6 +10,7 @@ type DocxViewerProps = {
   zoom: number;
 };
 
+// DocxViewer 负责 DOCX 页面内容的缩放渲染和滚动布局。
 function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
   const pages = useMemo(
     () =>
@@ -27,28 +27,12 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
         : [],
     [document],
   );
-  const summaryText = useMemo(
-    () =>
-      document
-        ? `${pages.length} pages / ${document.blocks.length} blocks / ${document.images.length} images`
-        : '',
-    [document, pages.length],
-  );
-
   if (!document?.blocks.length || !pages.length) {
     return <OfficeEmpty kind="docx" />;
   }
 
   return (
     <div className="oxv-docx-viewer">
-      <div className="oxv-docx-viewer__header">
-        <Typography.Text strong ellipsis className="oxv-docx-viewer__title">
-          {document.title}
-        </Typography.Text>
-        <Typography.Text type="secondary" className="oxv-docx-viewer__summary">
-          {summaryText}
-        </Typography.Text>
-      </div>
       <div className="oxv-docx-viewer__scroller">
         {pages.map((pageItem) => {
           const contentWidth =

@@ -21,4 +21,6 @@ export type CfbFile = {
 
 export type CfbReadOptions = {
   yieldIfNeeded?: () => Promise<void>;
+  /** 兼容省略最后扇区零填充的 CFB 生成器；默认保持严格校验。 */
+  allowPartialFinalSector?: boolean;
 };

@@ -6,10 +6,11 @@ import type {
   SpreadsheetSheet,
   SpreadsheetWorkbook,
 } from '../spreadsheet/types';
+import type { PortableResource } from '../parsing/protocol/messages';
 import { BIFF8_RECORD } from './biff8/constants';
 import { formatBiff8Value } from './biff8/numberFormats';
 import { parseBiff8Charts } from './chart/parseCharts';
-import { createImageResource } from './drawing/createImageResource';
+import { createPortableImageResource } from './drawing/createPortableImageResource';
 import {
   parseBiff8Drawings,
   parseBiff8DrawingShapes,
@@ -18,6 +19,7 @@ import type {
   Biff8BorderStyle,
   Biff8Cell,
   Biff8CellFormat,
+  Biff8SheetDescriptor,
   Biff8Workbook,
   Biff8Worksheet,
 } from './types';
@@ -292,37 +294,50 @@ function adaptWorksheet(
   };
 }
 
+function createChartSheetPlaceholder(
+  descriptor: Biff8SheetDescriptor,
+): SpreadsheetSheet {
+  return {
+    id: descriptor.id,
+    name: descriptor.name,
+    path: `/Workbook/${descriptor.name}`,
+    kind: 'chart',
+    range: 'A1',
+    rowCount: 1,
+    columnCount: 1,
+    columns: [{ index: 1, label: 'A', width: DEFAULT_COLUMN_PIXELS }],
+    rows: [
+      {
+        index: 1,
+        height: DEFAULT_ROW_PIXELS,
+        cells: [{ ref: 'A1', rowIndex: 1, columnIndex: 1, value: '' }],
+      },
+    ],
+    merges: [],
+    images: [],
+    charts: [],
+  };
+}
+
+/** 将一个 BIFF8 工作表描述符适配为可独立传输的预览模型。 */
+export function adaptBiff8Sheet(
+  source: Biff8Workbook,
+  descriptor: Biff8SheetDescriptor,
+): SpreadsheetSheet | undefined {
+  const worksheet = source.worksheets.find(
+    (sheet) => sheet.descriptor.id === descriptor.id,
+  );
+  if (worksheet) return adaptWorksheet(worksheet, source);
+  if (descriptor.type !== 'chart') return undefined;
+  return createChartSheetPlaceholder(descriptor);
+}
+
 /** 将 BIFF8 中间模型适配为 XLSX 预览器复用的通用工作簿。 */
 export function adaptBiff8Workbook(source: Biff8Workbook): SpreadsheetWorkbook {
   return {
     sheets: source.globals.sheets.flatMap((descriptor) => {
-      const worksheet = source.worksheets.find(
-        (sheet) => sheet.descriptor.id === descriptor.id,
-      );
-      if (worksheet) return [adaptWorksheet(worksheet, source)];
-      if (descriptor.type !== 'chart') return [];
-      return [
-        {
-          id: descriptor.id,
-          name: descriptor.name,
-          path: `/Workbook/${descriptor.name}`,
-          kind: 'chart' as const,
-          range: 'A1',
-          rowCount: 1,
-          columnCount: 1,
-          columns: [{ index: 1, label: 'A', width: DEFAULT_COLUMN_PIXELS }],
-          rows: [
-            {
-              index: 1,
-              height: DEFAULT_ROW_PIXELS,
-              cells: [{ ref: 'A1', rowIndex: 1, columnIndex: 1, value: '' }],
-            },
-          ],
-          merges: [],
-          images: [],
-          charts: [],
-        },
-      ];
+      const sheet = adaptBiff8Sheet(source, descriptor);
+      return sheet ? [sheet] : [];
     }),
     warnings: source.warnings.length ? source.warnings : undefined,
   };
@@ -408,16 +423,20 @@ function ensureSheetBounds(
   sheet.range = endRef === 'A1' ? 'A1' : `A1:${endRef}`;
 }
 
-/** 解析并附加 XLS 绘图图片，同时登记所有待释放 Blob URL。 */
+export type XlsResourceCollector = {
+  add(resource: PortableResource): Promise<string>;
+};
+
+/** 解析并附加 XLS 绘图图片，资源的实体化方式由运行环境注入。 */
 export async function attachBiff8DrawingImages(
   target: SpreadsheetWorkbook,
   source: Biff8Workbook,
+  resources: XlsResourceCollector,
 ) {
   const groupBytes = concatenateChunks(
     source.globals.drawingGroupRecords.flatMap((record) => record.chunks),
   );
   if (!groupBytes.length) return;
-  target.resources ??= { objectUrls: [] };
   const warnings = target.warnings ?? [];
   target.warnings = warnings;
 
@@ -445,15 +464,19 @@ export async function attachBiff8DrawingImages(
       });
       continue;
     }
-    for (const image of images) {
+    for (let imageIndex = 0; imageIndex < images.length; imageIndex += 1) {
+      const image = images[imageIndex];
       ensureSheetBounds(
         targetSheet,
         image.anchor.to.row + 1,
         image.anchor.to.column + 1,
       );
       try {
-        const resource = await createImageResource(image);
-        target.resources.objectUrls.push(resource.objectUrl);
+        const resource = await createPortableImageResource(
+          image,
+          `xls:${sourceSheet.descriptor.id}:${image.id}:${imageIndex}`,
+        );
+        const src = await resources.add(resource.resource);
         warnings.push(
           ...resource.warnings.map((warning) => ({
             ...warning,
@@ -466,7 +489,7 @@ export async function attachBiff8DrawingImages(
           id: image.id,
           name: image.name,
           alt: image.alt,
-          src: resource.src,
+          src,
           from: {
             row: image.anchor.from.row + 1,
             column: image.anchor.from.column + 1,

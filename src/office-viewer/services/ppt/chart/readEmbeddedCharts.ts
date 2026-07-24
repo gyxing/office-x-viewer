@@ -1,5 +1,5 @@
-import { parseXls } from '../../xls/parseXls';
 import type { OfficeChartModel } from '../../../shared/ooxml/charts';
+import { parseXlsCore } from '../../xls/parseXlsCore';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import type { PptEditChain, PptParseContext, PptRecord } from '../types';
@@ -100,12 +100,10 @@ export async function readPptEmbeddedCharts(
         continue;
       }
       const bytes = await inflateOleStorage(storageRecord);
-      const workbook = await parseXls(
-        new Blob([bytes], {
-          type: 'application/vnd.ms-excel',
-        }) as File,
-      );
-      const chart = workbook.sheets
+      const result = await parseXlsCore(bytes, {
+        checkpoint: () => context.yieldIfNeeded(),
+      });
+      const chart = result.workbook.sheets
         .flatMap((sheet) => sheet.charts)
         .find((item) => item.chart);
       if (chart) {
@@ -114,10 +112,6 @@ export async function readPptEmbeddedCharts(
           title: chart.title,
         });
       }
-      for (const url of workbook.resources?.objectUrls ?? []) {
-        context.objectUrls.add(url);
-      }
-      if (workbook.resources) workbook.resources.objectUrls.length = 0;
     } catch (error) {
       context.warnings.push({
         code: 'PPT_EMBEDDED_CHART_FALLBACK',

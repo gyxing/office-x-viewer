@@ -3,7 +3,11 @@ import {
   parseOfficeArtRecords,
   type OfficeArtRecord,
 } from '../../../shared/officeart';
-import type { PptParseContext } from '../types';
+import {
+  createPptResourceId,
+  registerPptResource,
+  type PptParseContext,
+} from '../types';
 import { createPptStaticPreviewCard } from './createStaticPreviewCard';
 
 type RasterInfo = {
@@ -52,7 +56,11 @@ function fallbackLabel(type: number) {
   return ['嵌入图像', 'PowerPoint 97–2003 图片对象'];
 }
 
-/** 解析 Pictures 流并建立一基序号到浏览器资源 URL 的映射。 */
+function toExactArrayBuffer(bytes: Uint8Array) {
+  return Uint8Array.from(bytes).buffer;
+}
+
+/** 解析 Pictures 流并建立一基序号到可传输资源引用的映射。 */
 export async function readPptPictures(
   picturesStream: Uint8Array | undefined,
   context: PptParseContext,
@@ -62,15 +70,19 @@ export async function readPptPictures(
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     const raster = readRaster(record);
-    let url: string;
+    let reference: string;
     if (raster) {
-      url = URL.createObjectURL(new Blob([raster.bytes], { type: raster.mimeType }));
-      context.objectUrls.add(url);
+      reference = registerPptResource(context, {
+        id: createPptResourceId(context, 'picture'),
+        encoding: 'binary',
+        mimeType: raster.mimeType,
+        buffer: toExactArrayBuffer(raster.bytes),
+      });
     } else {
       const [title, detail] = fallbackLabel(record.type);
-      url = createPptStaticPreviewCard(title, detail, context);
+      reference = createPptStaticPreviewCard(title, detail, context);
     }
-    context.blipUrls.set(index + 1, url);
+    context.blipUrls.set(index + 1, reference);
     await context.yieldIfNeeded();
   }
   return context.blipUrls;

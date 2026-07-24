@@ -5,7 +5,24 @@ export type DocDocument = {
   paragraphs: DocParagraph[];
   images: DocImage[];
   warnings: string[];
+  resources?: DocResources;
 };
+
+export type DocResources = {
+  objectUrls: string[];
+};
+
+/** 释放 DOC/WPS 文档创建的 Blob URL；重复调用保持幂等。 */
+export function disposeDocDocument(document: DocDocument | undefined) {
+  const urls = document?.resources?.objectUrls;
+  if (!urls?.length) return;
+  const uniqueUrls = new Set(urls);
+  urls.length = 0;
+  if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+    return;
+  }
+  uniqueUrls.forEach((url) => URL.revokeObjectURL(url));
+}
 
 export type DocPage = {
   width: number;

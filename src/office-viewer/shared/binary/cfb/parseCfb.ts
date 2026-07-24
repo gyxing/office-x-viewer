@@ -41,6 +41,21 @@ function readUint32(view: DataView, offset: number) {
   return view.getUint32(offset, true);
 }
 
+function padPartialFinalSector(bytes: Uint8Array) {
+  if (bytes.length < CFB_HEADER_SIZE) return bytes;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sectorShift = readUint16(view, 30);
+  if (sectorShift !== 9 && sectorShift !== 12) return bytes;
+  const sectorSize = 2 ** sectorShift;
+  const remainder = bytes.length % sectorSize;
+  if (!remainder) return bytes;
+
+  // 部分 WPS 版本会省略最后扇区未使用的零填充，补齐后仍由原有结构校验负责判断文件有效性。
+  const padded = new Uint8Array(bytes.length + sectorSize - remainder);
+  padded.set(bytes);
+  return padded;
+}
+
 function isSpecialSector(value: number) {
   return (
     value === FREE_SECTOR ||
@@ -552,7 +567,10 @@ export async function parseCfb(
   input: ArrayBuffer | Uint8Array,
   options: CfbReadOptions = {},
 ): Promise<CfbFile> {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const source = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const bytes = options.allowPartialFinalSector
+    ? padPartialFinalSector(source)
+    : source;
   const header = parseHeader(bytes);
   const difat = await readDifat(bytes, header, options);
   const fat = await readFat(bytes, header, difat, options);

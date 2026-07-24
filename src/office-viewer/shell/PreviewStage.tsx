@@ -34,6 +34,8 @@ const LazyDocViewer = lazy(() =>
 
 type OfficePreviewStageProps = {
   loading: boolean;
+  loadingTip?: string;
+  hasRenderableContent: boolean;
   error?: string;
   previewKind: PreviewKind;
   pptxDocument?: PresentationDocument;
@@ -49,6 +51,8 @@ type OfficePreviewStageProps = {
 
 function OfficePreviewStageComponent({
   loading,
+  loadingTip,
+  hasRenderableContent,
   error,
   previewKind,
   pptxDocument,
@@ -62,7 +66,9 @@ function OfficePreviewStageComponent({
   onSelectSheet,
 }: OfficePreviewStageProps) {
   if (error) return <OfficeError message={error} />;
-  if (loading) return <OfficeLoading />;
+  if (loading && !hasRenderableContent) {
+    return <OfficeLoading tip={loadingTip} />;
+  }
 
   // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
   return (

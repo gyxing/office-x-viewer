@@ -6,6 +6,7 @@ import type {
   PptBinaryDocument,
   PptEditChain,
   PptParseContext,
+  PptSlideModel,
 } from '../types';
 import { readPptMaster } from './readMaster';
 import { readPptSlide } from './readSlide';
@@ -14,6 +15,16 @@ import { readPptSlideLists } from './readSlideLists';
 const DEFAULT_SLIDE_WIDTH = 960;
 const DEFAULT_SLIDE_HEIGHT = 540;
 const MASTER_UNIT_TO_PX = 1 / 8;
+
+export type PptDocumentStructure = Pick<
+  PptBinaryDocument,
+  'width' | 'height' | 'theme' | 'masters'
+>;
+
+export type PptDocumentObserver = {
+  structure(value: PptDocumentStructure): Promise<void>;
+  slide(index: number, slide: PptSlideModel): Promise<void>;
+};
 
 function readDocumentSize(
   documentStream: Uint8Array,
@@ -48,6 +59,7 @@ export async function readPptBinaryDocument(
   documentStream: Uint8Array,
   editChain: PptEditChain,
   context: PptParseContext,
+  observer?: PptDocumentObserver,
 ): Promise<PptBinaryDocument> {
   const documentOffset = editChain.persistOffsets.get(
     editChain.documentPersistId,
@@ -103,6 +115,7 @@ export async function readPptBinaryDocument(
           Boolean(entry),
       ),
   );
+  await observer?.structure({ width, height, theme, masters });
   const slides = [];
   for (const descriptor of descriptors.slides) {
     const slide = readPptSlide(
@@ -118,8 +131,9 @@ export async function readPptBinaryDocument(
       slide.background =
         masters.get(slide.masterId ?? Number.NaN)?.background ?? {
           fill: theme.colorScheme.lt1 ?? '#ffffff',
-        };
+      };
       slides.push(slide);
+      await observer?.slide(slides.length - 1, slide);
     }
     await context.yieldIfNeeded();
   }
